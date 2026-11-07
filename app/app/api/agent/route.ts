@@ -75,11 +75,12 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const { strategy, walletAddress, groqApiKey, evolveMarket } = body as {
+    const { strategy, walletAddress, groqApiKey, evolveMarket, failsafeConfig } = body as {
       strategy?: string;
       walletAddress?: string;
       groqApiKey?: string;
       evolveMarket?: boolean;
+      failsafeConfig?: any;
     };
 
     if (!strategy || typeof strategy !== 'string') {
@@ -102,6 +103,7 @@ export async function POST(request: NextRequest) {
       strategy,
       walletAddress: activeWallet,
       groqApiKey,
+      failsafeConfig,
     });
 
     // If trade executed, broadcast on-chain settlement directly to Solana DevNet

@@ -2,6 +2,7 @@ import { Agent } from '@mastra/core/agent';
 import { getInventoryTool, getMarketPricesTool, executeAtomicSwapTool, performAtomicSwap, SwapResult } from './agent-tools';
 import { getCurrentMarketPrices } from './market-engine';
 import { getPlayerInventory } from './player-inventory';
+import { FailsafeConfig } from './failsafe-engine';
 import Groq from 'groq-sdk';
 
 const SYSTEM_INSTRUCTIONS = `
@@ -57,13 +58,14 @@ export function createAutoLootAgent(groqApiKey?: string) {
 export async function evaluateStrategyDeterministic(params: {
   strategy: string;
   walletAddress: string;
+  failsafeConfig?: FailsafeConfig;
 }): Promise<{
   decision: 'SWAP' | 'HOLD' | 'INSUFFICIENT_FUNDS';
   thoughtLog: string;
   executed: boolean;
   swapResult?: SwapResult;
 }> {
-  const { strategy, walletAddress } = params;
+  const { strategy, walletAddress, failsafeConfig } = params;
   const market = getCurrentMarketPrices();
   const inventory = getPlayerInventory(walletAddress);
 
@@ -76,7 +78,22 @@ export async function evaluateStrategyDeterministic(params: {
     const currentIronPerGold = market.crossRates.IRON_PER_GOLD;
 
     if (currentIronPerGold <= targetThreshold) {
-      const amountToSell = Math.min(inventory.IRON, 50);
+      let amountToSell = Math.min(inventory.IRON, 50);
+
+      // Reserve floor protection
+      if (failsafeConfig?.reserveFloorEnabled) {
+        const reserveFloor = failsafeConfig.minReserveUnits;
+        const maxSpendable = Math.max(0, inventory.IRON - reserveFloor);
+        amountToSell = Math.min(amountToSell, maxSpendable);
+        if (amountToSell <= 0) {
+          return {
+            decision: 'HOLD',
+            thoughtLog: `[RESERVE GUARD] Target condition met, but selling $IRON would breach minimum reserve floor (${reserveFloor} units). Current: ${inventory.IRON}. Holding position.`,
+            executed: false,
+          };
+        }
+      }
+
       if (amountToSell <= 0) {
         return {
           decision: 'INSUFFICIENT_FUNDS',
@@ -115,7 +132,22 @@ export async function evaluateStrategyDeterministic(params: {
     const currentWoodPerIron = market.crossRates.WOOD_PER_IRON;
 
     if (currentWoodPerIron <= targetThreshold) {
-      const amountToSell = Math.min(inventory.WOOD, 100);
+      let amountToSell = Math.min(inventory.WOOD, 100);
+
+      // Reserve floor protection
+      if (failsafeConfig?.reserveFloorEnabled) {
+        const reserveFloor = failsafeConfig.minReserveUnits;
+        const maxSpendable = Math.max(0, inventory.WOOD - reserveFloor);
+        amountToSell = Math.min(amountToSell, maxSpendable);
+        if (amountToSell <= 0) {
+          return {
+            decision: 'HOLD',
+            thoughtLog: `[RESERVE GUARD] Target condition met, but selling $WOOD would breach minimum reserve floor (${reserveFloor} units). Current: ${inventory.WOOD}. Holding position.`,
+            executed: false,
+          };
+        }
+      }
+
       if (amountToSell <= 0) {
         return {
           decision: 'INSUFFICIENT_FUNDS',
@@ -163,6 +195,7 @@ export async function runAgentStrategy(params: {
   strategy: string;
   walletAddress: string;
   groqApiKey?: string;
+  failsafeConfig?: FailsafeConfig;
 }): Promise<{
   decision: 'SWAP' | 'HOLD' | 'INSUFFICIENT_FUNDS';
   thoughtLog: string;

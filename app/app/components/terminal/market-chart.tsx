@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { AssetSymbol, MarketState } from '@/lib/market-engine';
-import { Zap, TrendingDown, RefreshCw, Radio } from 'lucide-react';
+import { Zap, TrendingDown, TrendingUp, Radio } from 'lucide-react';
 
 interface MarketChartProps {
   market: MarketState;
@@ -51,11 +51,11 @@ export function MarketChart({ market, onTriggerShock, isLoadingShock }: MarketCh
       {/* Header with Title and Asset Tabs */}
       <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-zinc-800/80">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-cyan-950/40 border border-cyan-500/30 text-cyan-400 text-xs font-mono">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-cyan-950/40 border border-cyan-500/30 text-cyan-400 text-xs font-mono font-bold">
             <Radio className="size-3 animate-pulse text-cyan-400" />
-            LIVE TELEMETRY FEED
+            LIVE MARKET CHART
           </div>
-          <span className="text-xs text-zinc-400 font-mono">TICK #{market.tick} // REFRESH: 5.0s</span>
+          <span className="text-xs text-zinc-400 font-mono font-bold">Tick #{market.tick}</span>
         </div>
 
         {/* Asset Selection Buttons */}
@@ -170,36 +170,90 @@ export function MarketChart({ market, onTriggerShock, isLoadingShock }: MarketCh
       </div>
 
       {/* Volatility Simulation Controls */}
-      <div className="mt-4 pt-3 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-2">
-        <div className="text-[11px] font-mono text-zinc-400 flex items-center gap-1.5">
-          <Zap className="size-3.5 text-amber-400" />
-          <span>MARKET VOLATILITY CONTROLS:</span>
+      <div className="mt-4 pt-3 border-t border-zinc-800/80 space-y-2">
+        <div className="text-[11px] font-mono text-zinc-400 flex items-center justify-between">
+          <div className="flex items-center gap-1.5 font-bold">
+            <Zap className="size-3.5 text-amber-400" />
+            <span>MARKET VOLATILITY CONTROLS:</span>
+          </div>
+          <span className="text-[10px] text-zinc-500">Inject price shocks</span>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            disabled={isLoadingShock}
-            onClick={() => onTriggerShock('GOLD', 'UP')}
-            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-mono font-bold bg-amber-500/10 border border-amber-500/40 text-amber-300 hover:bg-amber-500/20 disabled:opacity-50 transition-all"
-          >
-            <Zap className="size-3" />
-            +12% Bull Shift $GOLD
-          </button>
-          <button
-            disabled={isLoadingShock}
-            onClick={() => onTriggerShock('GOLD', 'DOWN')}
-            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-mono font-bold bg-rose-500/10 border border-rose-500/40 text-rose-300 hover:bg-rose-500/20 disabled:opacity-50 transition-all"
-          >
-            <TrendingDown className="size-3" />
-            -12% Bear Shift $GOLD
-          </button>
-          <button
-            disabled={isLoadingShock}
-            onClick={() => onTriggerShock('IRON', 'DOWN')}
-            className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-mono font-bold bg-cyan-500/10 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/20 disabled:opacity-50 transition-all"
-          >
-            <RefreshCw className={`size-3 ${isLoadingShock ? 'animate-spin' : ''}`} />
-            -12% Bear Shift $IRON
-          </button>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono">
+          {/* $WOOD Controls */}
+          <div className="flex items-center gap-1.5 p-1.5 bg-zinc-900/40 border border-zinc-800">
+            <span className="text-[11px] font-bold text-emerald-400 px-1.5 py-0.5 bg-emerald-950/40 border border-emerald-500/20 shrink-0">
+              $WOOD
+            </span>
+            <div className="flex items-center gap-1 flex-1">
+              <button
+                disabled={isLoadingShock}
+                onClick={() => onTriggerShock('WOOD', 'UP')}
+                className="flex-1 flex items-center justify-center gap-1 py-1 text-[10px] font-bold bg-emerald-500/10 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50 transition-all cursor-pointer"
+              >
+                <TrendingUp className="size-2.5" />
+                +12% Bull
+              </button>
+              <button
+                disabled={isLoadingShock}
+                onClick={() => onTriggerShock('WOOD', 'DOWN')}
+                className="flex-1 flex items-center justify-center gap-1 py-1 text-[10px] font-bold bg-rose-500/10 border border-rose-500/40 text-rose-300 hover:bg-rose-500/20 disabled:opacity-50 transition-all cursor-pointer"
+              >
+                <TrendingDown className="size-2.5" />
+                -12% Bear
+              </button>
+            </div>
+          </div>
+
+          {/* $IRON Controls */}
+          <div className="flex items-center gap-1.5 p-1.5 bg-zinc-900/40 border border-zinc-800">
+            <span className="text-[11px] font-bold text-cyan-400 px-1.5 py-0.5 bg-cyan-950/40 border border-cyan-500/20 shrink-0">
+              $IRON
+            </span>
+            <div className="flex items-center gap-1 flex-1">
+              <button
+                disabled={isLoadingShock}
+                onClick={() => onTriggerShock('IRON', 'UP')}
+                className="flex-1 flex items-center justify-center gap-1 py-1 text-[10px] font-bold bg-cyan-500/10 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/20 disabled:opacity-50 transition-all cursor-pointer"
+              >
+                <TrendingUp className="size-2.5" />
+                +12% Bull
+              </button>
+              <button
+                disabled={isLoadingShock}
+                onClick={() => onTriggerShock('IRON', 'DOWN')}
+                className="flex-1 flex items-center justify-center gap-1 py-1 text-[10px] font-bold bg-rose-500/10 border border-rose-500/40 text-rose-300 hover:bg-rose-500/20 disabled:opacity-50 transition-all cursor-pointer"
+              >
+                <TrendingDown className="size-2.5" />
+                -12% Bear
+              </button>
+            </div>
+          </div>
+
+          {/* $GOLD Controls */}
+          <div className="flex items-center gap-1.5 p-1.5 bg-zinc-900/40 border border-zinc-800">
+            <span className="text-[11px] font-bold text-amber-400 px-1.5 py-0.5 bg-amber-950/40 border border-amber-500/20 shrink-0">
+              $GOLD
+            </span>
+            <div className="flex items-center gap-1 flex-1">
+              <button
+                disabled={isLoadingShock}
+                onClick={() => onTriggerShock('GOLD', 'UP')}
+                className="flex-1 flex items-center justify-center gap-1 py-1 text-[10px] font-bold bg-amber-500/10 border border-amber-500/40 text-amber-300 hover:bg-amber-500/20 disabled:opacity-50 transition-all cursor-pointer"
+              >
+                <TrendingUp className="size-2.5" />
+                +12% Bull
+              </button>
+              <button
+                disabled={isLoadingShock}
+                onClick={() => onTriggerShock('GOLD', 'DOWN')}
+                className="flex-1 flex items-center justify-center gap-1 py-1 text-[10px] font-bold bg-rose-500/10 border border-rose-500/40 text-rose-300 hover:bg-rose-500/20 disabled:opacity-50 transition-all cursor-pointer"
+              >
+                <TrendingDown className="size-2.5" />
+                -12% Bear
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

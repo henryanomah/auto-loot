@@ -1,8 +1,3 @@
----
-status: accepted
-date: 2026-11-06
-decision-makers: [Developer, AI Architect]
----
 
 # ADR-0002: Atomic Swap Settlement via Server-Side Market Maker Vault
 

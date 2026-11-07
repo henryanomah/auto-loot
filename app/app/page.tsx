@@ -1,17 +1,23 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAppClient } from './lib/client-provider';
 import { useConnectedWallet } from '@solana/kit-plugin-wallet/react';
 import { MarketState, AssetSymbol } from '@/lib/market-engine';
 import { InventoryBalance, SwapReceipt } from '@/lib/player-inventory';
 import { MarketTicker } from './components/terminal/market-ticker';
+import { SessionAnalyticsCard } from './components/terminal/session-analytics-card';
 import { MarketChart } from './components/terminal/market-chart';
 import { InventoryPanel } from './components/terminal/inventory-panel';
 import { AgentControlCenter } from './components/terminal/agent-control-center';
 import { TelemetryConsole, TelemetryLog } from './components/terminal/telemetry-console';
 import { TradeHistory } from './components/terminal/trade-history';
-import { Radio } from 'lucide-react';
+import { computeSessionAnalytics, calculateInventoryValuation } from '@/lib/session-analytics';
+import {
+  FailsafeConfig,
+  DEFAULT_FAILSAFE_CONFIG,
+  evaluateFailsafeLimits,
+} from '@/lib/failsafe-engine';
 import { toast } from 'sonner';
 
 const FALLBACK_WALLET = 'PlayerDefaultWallet11111111111111111111111111';
@@ -34,6 +40,7 @@ export default function Home() {
     GOLD: 15,
   });
   const [receipts, setReceipts] = useState<SwapReceipt[]>([]);
+  const [baselineValuation, setBaselineValuation] = useState<number>(0);
   const [isResettingInventory, setIsResettingInventory] = useState(false);
   const [hasUpdatedRecently, setHasUpdatedRecently] = useState(false);
   const [isBuyingSol, setIsBuyingSol] = useState(false);
@@ -46,6 +53,49 @@ export default function Home() {
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [logs, setLogs] = useState<TelemetryLog[]>([]);
 
+  // Emergency Failsafe & Risk Configuration
+  const [failsafeConfig, setFailsafeConfig] = useState<FailsafeConfig>(DEFAULT_FAILSAFE_CONFIG);
+
+  const handleUpdateFailsafeConfig = useCallback((updates: Partial<FailsafeConfig>) => {
+    setFailsafeConfig((prev) => ({ ...prev, ...updates }));
+  }, []);
+
+  // Establish baseline portfolio valuation on initial data load
+  useEffect(() => {
+    if (baselineValuation === 0 && market && inventory) {
+      const initial = calculateInventoryValuation(inventory, market);
+      if (initial > 0) {
+        setBaselineValuation(initial);
+      }
+    }
+  }, [baselineValuation, market, inventory]);
+
+  // Recalibrate baseline if active wallet switches
+  const prevWalletRef = useRef(activeWallet);
+  useEffect(() => {
+    if (prevWalletRef.current !== activeWallet) {
+      prevWalletRef.current = activeWallet;
+      setBaselineValuation(0);
+    }
+  }, [activeWallet]);
+
+  // Real-time Session Portfolio Analytics
+  const sessionAnalytics = useMemo(() => {
+    if (!market) {
+      return {
+        currentValuation: 0,
+        baselineValuation: 0,
+        pnlDelta: 0,
+        pnlPercentage: 0,
+        solEquivalent: 0,
+        totalTradesCount: receipts.length,
+        profitableTradesCount: receipts.length,
+        winRate: receipts.length > 0 ? 100 : 0,
+      };
+    }
+    return computeSessionAnalytics(inventory, market, baselineValuation, receipts);
+  }, [inventory, market, baselineValuation, receipts]);
+
   const addLog = useCallback((type: TelemetryLog['type'], message: string) => {
     setLogs((prev) => [
       ...prev,
@@ -57,6 +107,12 @@ export default function Home() {
       },
     ]);
   }, []);
+
+  const handleEmergencyHalt = useCallback(() => {
+    setIsMonitoring(false);
+    addLog('WARNING', '[CIRCUIT BREAKER] Emergency halt triggered. All autonomous operations suspended.');
+    toast.warning('Emergency Circuit Breaker: Trading halted.');
+  }, [addLog]);
 
   // Fetch live market data
   const fetchMarket = useCallback(async () => {
@@ -96,13 +152,7 @@ export default function Home() {
         id: 'init-1',
         timestamp: new Date().toLocaleTimeString(),
         type: 'INFO',
-        message: 'AUTOLOOT PROTOCOL INITIALIZED // Solana DevNet Cluster: CONNECTED',
-      },
-      {
-        id: 'init-2',
-        timestamp: new Date().toLocaleTimeString(),
-        type: 'INFO',
-        message: 'Autonomous Economic Core: ONLINE. Standing by for strategy dispatch.',
+        message: 'AutoLoot trader online. Select a preset or type a strategy to begin.',
       },
     ]);
 
@@ -119,6 +169,21 @@ export default function Home() {
   // Strategy Execution Handler (Automated On-Chain Settlement)
   const handleExecuteStrategy = useCallback(
     async (strategyToRun: string, singleShot = true) => {
+      // 1. Pre-execution Failsafe Check: Stop-Loss
+      if (failsafeConfig.stopLossEnabled) {
+        const failsafe = evaluateFailsafeLimits({
+          config: failsafeConfig,
+          currentPnlPercentage: sessionAnalytics.pnlPercentage,
+        });
+
+        if (failsafe.triggered && failsafe.reason === 'STOP_LOSS') {
+          setIsMonitoring(false);
+          addLog('WARNING', `[FAILSAFE TRIGGERED] ${failsafe.message}`);
+          toast.error(`Emergency Stop-Loss Triggered (${sessionAnalytics.pnlPercentage.toFixed(2)}%)`);
+          return;
+        }
+      }
+
       setIsEvaluating(true);
       setCurrentStrategy(strategyToRun);
 
@@ -132,6 +197,7 @@ export default function Home() {
             strategy: strategyToRun,
             walletAddress: activeWallet,
             evolveMarket: true,
+            failsafeConfig,
           }),
         });
 
@@ -177,7 +243,7 @@ export default function Home() {
         setIsEvaluating(false);
       }
     },
-    [activeWallet, addLog, fetchInventory, fetchMarket]
+    [activeWallet, addLog, fetchInventory, fetchMarket, failsafeConfig, sessionAnalytics.pnlPercentage]
   );
 
   // Autonomous Monitoring Loop
@@ -239,6 +305,10 @@ export default function Home() {
       const json = await res.json();
       if (json.success && json.inventory) {
         setInventory(json.inventory);
+        if (market) {
+          const resetVal = calculateInventoryValuation(json.inventory, market);
+          setBaselineValuation(resetVal);
+        }
         addLog('INFO', `[INVENTORY REPLENISHED] Restored starter pack (100 $IRON, 250 $WOOD, 15 $GOLD).`);
         fetchInventory();
       }
@@ -291,6 +361,10 @@ export default function Home() {
         const json = await res.json();
         if (json.success && json.data) {
           setInventory(json.data.inventory);
+          if (market) {
+            const purchasedValue = amount * (market.assets[asset]?.price || 0);
+            setBaselineValuation((prev) => prev + purchasedValue);
+          }
           setHasUpdatedRecently(true);
           setTimeout(() => setHasUpdatedRecently(false), 2500);
           toast.success(`Purchased +${amount} $${asset} with ${solCost} SOL!`);
@@ -319,31 +393,17 @@ export default function Home() {
 
   return (
     <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6 space-y-6 font-mono">
-      {/* Top Protocol Status Banner */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-[#050811]/90 border border-cyan-500/20 text-xs text-zinc-400">
-        <div className="flex items-center gap-2">
-          <Radio className="size-3.5 text-cyan-400 animate-pulse" />
-          <span className="font-bold text-zinc-300">PROTOCOL TELEMETRY:</span>
-          <span>CLUSTER: devnet.solana.com</span>
-          <span className="text-zinc-600">|</span>
-          <span>SETTLEMENT: ON-CHAIN VERIFIED</span>
-          <span className="text-zinc-600">|</span>
-          <span className="text-emerald-400 font-bold">STATUS: NOMINAL</span>
-        </div>
-        <div className="flex items-center gap-4 text-[11px]">
-          <span>
-            AGENT: <strong className="text-cyan-300">AUTOLOOT-PRIME</strong>
-          </span>
-          <span>
-            TICK: <strong className="text-white">#{market?.tick || 0}</strong>
-          </span>
-        </div>
-      </div>
-
       {/* Row 1: Real-time Asset Tickers */}
       {market && <MarketTicker assets={market.assets} tick={market.tick} />}
 
-      {/* Row 2: Telemetry Chart & Player Inventory */}
+      {/* Row 2: Session Analytics & Real-Time PnL */}
+      <SessionAnalyticsCard
+        analytics={sessionAnalytics}
+        isMonitoring={isMonitoring}
+        currentStrategy={currentStrategy}
+      />
+
+      {/* Row 3: Market Chart & Player Inventory */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           {market && (
@@ -379,7 +439,10 @@ export default function Home() {
             isEvaluating={isEvaluating}
             isMonitoring={isMonitoring}
             onToggleMonitoring={() => setIsMonitoring((prev) => !prev)}
+            onEmergencyHalt={handleEmergencyHalt}
             currentStrategy={currentStrategy}
+            failsafeConfig={failsafeConfig}
+            onUpdateFailsafeConfig={handleUpdateFailsafeConfig}
           />
         </div>
         <div>

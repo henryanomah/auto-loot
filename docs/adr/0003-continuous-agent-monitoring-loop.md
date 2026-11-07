@@ -1,8 +1,3 @@
----
-status: accepted
-date: 2026-11-06
-decision-makers: [Developer, AI Architect]
----
 
 # ADR-0003: Continuous Agent Monitoring Loop with Telemetry Logging
 

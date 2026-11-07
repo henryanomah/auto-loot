@@ -45,7 +45,7 @@ export function TelemetryConsole({ logs, onClearLogs, isAgentActive }: Telemetry
         <div className="flex items-center gap-2">
           <Cpu className={`size-4 ${isAgentActive ? 'text-emerald-400 animate-spin' : 'text-zinc-500'}`} />
           <h2 className="text-sm font-mono font-bold tracking-wider text-white">
-            AI AGENT TELEMETRY STREAM
+            AGENT ACTIVITY STREAM
           </h2>
           {isAgentActive && (
             <span className="text-[10px] font-mono px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 animate-pulse">
@@ -70,7 +70,7 @@ export function TelemetryConsole({ logs, onClearLogs, isAgentActive }: Telemetry
       >
         {logs.length === 0 ? (
           <div className="text-zinc-600 italic py-8 text-center font-mono">
-            // No telemetry events recorded. Dispatch a strategy directive to initialize telemetry.
+            No activity recorded. Dispatch a strategy directive to begin.
           </div>
         ) : (
           logs.map((log) => (
@@ -83,9 +83,9 @@ export function TelemetryConsole({ logs, onClearLogs, isAgentActive }: Telemetry
       </div>
 
       {/* Terminal Footer */}
-      <div className="mt-2 pt-2 border-t border-zinc-900 text-[10px] font-mono text-zinc-600 flex items-center justify-between shrink-0">
-        <span>TELEMETRY CHANNEL // HIGH-FREQUENCY PROTOCOL</span>
-        <span>EVENTS: {logs.length}</span>
+      <div className="mt-2 pt-2 border-t border-zinc-900 text-[10px] font-mono text-zinc-500 flex items-center justify-between shrink-0">
+        <span>Activity Log</span>
+        <span>Events: {logs.length}</span>
       </div>
     </div>
   );
