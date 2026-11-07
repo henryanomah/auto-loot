@@ -13,6 +13,16 @@ import { useBalance } from "../lib/hooks/use-balance";
 import { ellipsify } from "../lib/explorer";
 import { useCluster } from "./cluster-context";
 import { useAppClient } from "../lib/client-provider";
+import {
+  Wallet,
+  Copy,
+  Check,
+  ExternalLink,
+  LogOut,
+  ChevronDown,
+  ShieldCheck,
+  AlertCircle,
+} from "lucide-react";
 
 const solFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 9,
@@ -115,39 +125,50 @@ export function WalletButton() {
 
   if (!isHydrated || !isWalletReady) {
     return (
-      <span className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground opacity-60">
-        Restoring wallet...
-      </span>
+      <div className="flex items-center gap-2 border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs font-mono text-zinc-500">
+        <span className="size-2 rounded-full bg-zinc-600 animate-pulse" />
+        <span>INITIALIZING...</span>
+      </div>
     );
   }
 
   if (!connected) {
     return (
-      <div className="relative" ref={ref}>
+      <div className="relative font-mono" ref={ref}>
         <button
           ref={triggerRef}
           onClick={() => (isOpen ? close() : open())}
           aria-expanded={isOpen}
           aria-controls={isOpen ? "wallet-options" : undefined}
-          className="cursor-pointer rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground shadow-xs transition hover:bg-primary/90"
+          className="flex items-center gap-2 border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 px-3.5 py-1.5 text-xs font-mono font-bold text-cyan-300 shadow-[0_0_12px_rgba(0,243,255,0.2)] transition-all cursor-pointer group"
         >
-          Connect Wallet
+          <Wallet className="size-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
+          <span>CONNECT WALLET</span>
+          <ChevronDown className="size-3 text-cyan-400" />
         </button>
 
         {isOpen && (
           <div
             id="wallet-options"
-            className="absolute right-0 top-full z-50 mt-2 w-64 rounded-xl border border-border-low bg-card p-3 shadow-lg"
+            className="absolute right-0 top-full z-50 mt-2 w-72 border border-cyan-500/30 bg-[#060b18]/95 backdrop-blur-md p-4 shadow-[0_0_25px_rgba(0,243,255,0.15)] font-mono text-zinc-100"
           >
-            <p className="mb-2 text-xs font-medium text-muted">
-              Choose a wallet
-            </p>
+            <div className="flex items-center justify-between pb-2 mb-3 border-b border-zinc-800">
+              <span className="text-[11px] font-bold tracking-wider text-zinc-400 uppercase">
+                SELECT SOLANA WALLET
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+                DEVNET
+              </span>
+            </div>
+
             {wallets.length === 0 ? (
-              <p className="text-xs text-muted">
-                No wallets detected. Install a Solana wallet extension.
-              </p>
+              <div className="p-3 bg-zinc-950/80 border border-zinc-800 text-center">
+                <p className="text-xs text-zinc-400">
+                  No Solana wallets detected. Please install Phantom or Solflare.
+                </p>
+              </div>
             ) : (
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 {wallets.map((wallet) => (
                   <button
                     key={wallet.name}
@@ -160,38 +181,44 @@ export function WalletButton() {
                       }
                     }}
                     disabled={isConnecting}
-                    className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition hover:bg-cream disabled:opacity-50 disabled:pointer-events-none"
+                    className="flex w-full items-center justify-between border border-zinc-800 hover:border-cyan-500/50 bg-zinc-950/60 hover:bg-cyan-500/10 px-3 py-2 text-left text-xs font-mono font-bold text-zinc-200 hover:text-cyan-300 transition-all cursor-pointer disabled:opacity-50"
                   >
-                    {wallet.icon && (
-                      // eslint-disable-next-line @next/next/no-img-element -- wallet-standard icons are data URIs
-                      <img
-                        src={wallet.icon}
-                        alt=""
-                        className="h-5 w-5 rounded"
-                      />
-                    )}
-                    <span>{wallet.name}</span>
+                    <div className="flex items-center gap-2.5">
+                      {wallet.icon && (
+                        // eslint-disable-next-line @next/next/no-img-element -- wallet-standard icons are data URIs
+                        <img
+                          src={wallet.icon}
+                          alt=""
+                          className="size-4 rounded-none"
+                        />
+                      )}
+                      <span>{wallet.name}</span>
+                    </div>
+                    <span className="text-[10px] text-zinc-500">CONNECT ↗</span>
                   </button>
                 ))}
               </div>
             )}
+
             {isConnecting && (
-              <p className="mt-2 text-xs text-muted" role="status">
-                Connecting...
-              </p>
+              <div className="mt-2 flex items-center gap-2 text-xs text-cyan-400 font-mono">
+                <span className="size-2 rounded-full bg-cyan-400 animate-ping" />
+                <span>Requesting connection...</span>
+              </div>
             )}
+
             {connectMenuError != null && (
-              <div className="mt-2 space-y-1 border-t border-border-low pt-2">
-                <p
-                  className="break-words text-xs text-destructive [overflow-wrap:anywhere]"
-                  role="alert"
-                >
-                  {connectMenuError instanceof Error
-                    ? connectMenuError.message
-                    : String(connectMenuError)}
-                </p>
-                <p className="text-[11px] text-zinc-400 leading-tight">
-                  Note: AutoLoot is a Solana DevNet application. Please connect a native Solana wallet like <strong>Phantom</strong> or <strong>Solflare</strong>. (EVM MetaMask requires a Solana Snap).
+              <div className="mt-3 space-y-1.5 border-t border-zinc-800 pt-2.5">
+                <div className="flex items-start gap-1.5 text-xs text-rose-400">
+                  <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
+                  <p className="break-words font-mono [overflow-wrap:anywhere]">
+                    {connectMenuError instanceof Error
+                      ? connectMenuError.message
+                      : String(connectMenuError)}
+                  </p>
+                </div>
+                <p className="text-[10px] text-zinc-400 leading-tight">
+                  AutoLoot runs on Solana DevNet. Connect a native Solana wallet like <strong>Phantom</strong> or <strong>Solflare</strong>.
                 </p>
               </div>
             )}
@@ -202,69 +229,120 @@ export function WalletButton() {
   }
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative font-mono" ref={ref}>
       <button
         ref={triggerRef}
         onClick={() => (isOpen ? close() : open())}
         aria-expanded={isOpen}
         aria-controls={isOpen ? "wallet-options" : undefined}
         aria-label={`Wallet ${walletAddress}`}
-        className="flex cursor-pointer items-center gap-2 rounded-lg border border-border-low bg-card px-3 py-2 text-xs font-medium transition hover:bg-cream"
+        className="flex cursor-pointer items-center gap-2 border border-zinc-800 hover:border-cyan-500/50 bg-[#060b18] px-3 py-1.5 text-xs font-mono transition-all group"
       >
-        <span className="h-2 w-2 rounded-full bg-green-500" />
-        <span className="font-mono">{ellipsify(walletAddress!, 4)}</span>
+        <span className="size-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.8)]" />
+        <span className="font-mono font-bold text-zinc-200 group-hover:text-cyan-300 transition-colors">
+          {ellipsify(walletAddress!, 4)}
+        </span>
+        {balance.lamports != null && (
+          <span className="text-zinc-400 text-[11px] font-mono hidden sm:inline">
+            ({formatDecimalFixedPoint(solFormatter, lamportsToSol(balance.lamports))} SOL)
+          </span>
+        )}
+        <ChevronDown className="size-3 text-zinc-500 group-hover:text-cyan-400 transition-colors" />
       </button>
 
       {isOpen && (
         <div
           id="wallet-options"
-          className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-border-low bg-card p-4 shadow-lg"
+          className="absolute right-0 top-full z-50 mt-2 w-80 border border-cyan-500/40 bg-[#060b18]/95 backdrop-blur-md p-4 shadow-[0_0_25px_rgba(0,243,255,0.2)] font-mono text-zinc-100"
         >
-          <div className="mb-3">
-            <p className="text-xs text-muted">Balance</p>
-            <p className="text-lg font-bold tabular-nums">
-              {balance.lamports != null
-                ? formatDecimalFixedPoint(
-                    solFormatter,
-                    lamportsToSol(balance.lamports)
-                  )
-                : balance.isLoading
-                  ? "Loading..."
-                  : "Unavailable"}{" "}
-              {balance.lamports != null && (
-                <span className="text-sm font-normal text-muted">SOL</span>
-              )}
-            </p>
+          {/* Header */}
+          <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-zinc-800">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="size-4 text-cyan-400" />
+              <span className="text-xs font-bold tracking-wider text-zinc-200 uppercase">
+                SOLANA WALLET
+              </span>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+              CONNECTED // DEVNET
+            </span>
+          </div>
+
+          {/* Balance Section */}
+          <div className="mb-3 p-3 bg-zinc-950 border border-zinc-800">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">
+                DevNet Balance
+              </span>
+              <span className="text-[10px] font-mono text-zinc-500">RPC: SYNCED</span>
+            </div>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-2xl font-black font-mono tracking-tight text-white">
+                {balance.lamports != null
+                  ? formatDecimalFixedPoint(
+                      solFormatter,
+                      lamportsToSol(balance.lamports)
+                    )
+                  : balance.isLoading
+                    ? "Syncing..."
+                    : "0.00"}
+              </span>
+              <span className="text-xs font-bold font-mono text-cyan-400">SOL</span>
+            </div>
             {balance.error != null && (
-              <p className="mt-1 text-xs text-destructive" role="alert">
-                Unable to load the wallet balance.
+              <p className="mt-1.5 text-[11px] text-rose-400" role="alert">
+                Unable to load wallet balance from DevNet RPC.
               </p>
             )}
           </div>
 
-          <div className="mb-3 rounded-lg border border-border-low bg-cream/50 px-3 py-2">
-            <p className="break-all font-mono text-xs">{walletAddress}</p>
+          {/* Public Key Card */}
+          <div className="mb-3 p-2.5 bg-zinc-950/80 border border-zinc-800">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[9px] uppercase tracking-widest text-zinc-400 font-bold">
+                Account Public Key
+              </span>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="text-[10px] text-cyan-400 hover:text-cyan-300 cursor-pointer"
+              >
+                {copied ? "COPIED!" : "COPY"}
+              </button>
+            </div>
+            <p className="break-all font-mono text-xs text-zinc-300 bg-zinc-900/60 p-1.5 border border-zinc-800/80 select-all">
+              {walletAddress}
+            </p>
           </div>
 
-          <div className="flex gap-2">
+          {/* Actions */}
+          <div className="grid grid-cols-2 gap-2 mb-2.5">
             <button
+              type="button"
               onClick={handleCopy}
-              aria-label={copied ? "Address copied" : "Copy address"}
-              className="flex-1 cursor-pointer rounded-lg border border-border-low bg-card px-3 py-2 text-xs font-medium transition hover:bg-cream"
+              className="flex items-center justify-center gap-1.5 border border-zinc-800 hover:border-cyan-500/50 bg-zinc-900/80 hover:bg-cyan-500/10 px-3 py-1.5 text-xs text-zinc-200 hover:text-cyan-300 font-bold transition-all cursor-pointer"
             >
-              {copied ? "Copied!" : "Copy address"}
+              {copied ? (
+                <Check className="size-3.5 text-emerald-400" />
+              ) : (
+                <Copy className="size-3.5 text-cyan-400" />
+              )}
+              <span>{copied ? "COPIED" : "COPY ADDRESS"}</span>
             </button>
             <a
               href={getExplorerUrl(`/address/${walletAddress}`)}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-1 rounded-lg border border-border-low bg-card px-3 py-2 text-center text-xs font-medium transition hover:bg-cream"
+              className="flex items-center justify-center gap-1.5 border border-zinc-800 hover:border-cyan-500/50 bg-zinc-900/80 hover:bg-cyan-500/10 px-3 py-1.5 text-xs text-zinc-200 hover:text-cyan-300 font-bold transition-all"
             >
-              Explorer
+              <ExternalLink className="size-3.5 text-cyan-400" />
+              <span>EXPLORER ↗</span>
             </a>
           </div>
 
+          {/* Disconnect Button */}
           <button
+            type="button"
             onClick={async () => {
               try {
                 await disconnect();
@@ -274,13 +352,15 @@ export function WalletButton() {
               }
             }}
             disabled={isDisconnecting}
-            className="mt-2 w-full cursor-pointer rounded-lg border border-border-low bg-card px-3 py-2 text-xs font-medium text-destructive transition hover:bg-destructive/10 disabled:pointer-events-none disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-2 border border-rose-500/30 hover:border-rose-500/60 bg-rose-500/10 hover:bg-rose-500/20 px-3 py-2 text-xs font-mono font-bold text-rose-300 transition-all cursor-pointer disabled:pointer-events-none disabled:opacity-50"
           >
-            {isDisconnecting ? "Disconnecting..." : "Disconnect"}
+            <LogOut className="size-3.5" />
+            <span>{isDisconnecting ? "DISCONNECTING..." : "DISCONNECT WALLET"}</span>
           </button>
+
           {accountMenuError != null && (
             <p
-              className="mt-2 break-words text-xs text-destructive [overflow-wrap:anywhere]"
+              className="mt-2 break-words text-xs text-rose-400 [overflow-wrap:anywhere]"
               role="alert"
             >
               {accountMenuError instanceof Error

@@ -133,11 +133,15 @@
   }
 
   body {
-    @apply antialiased bg-background text-foreground;
-    font-family: var(--font-sans);
+    @apply antialiased bg-[#03060f] text-zinc-100 font-mono;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   }
   html {
-    @apply font-sans;
+    @apply font-mono;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  }
+  button, input, select, textarea {
+    font-family: inherit;
   }
 }
 

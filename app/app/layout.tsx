@@ -21,12 +21,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className="font-sans dark">
+    <html lang="en" suppressHydrationWarning className="font-mono dark">
       <body className="antialiased font-mono bg-[#03060f] text-zinc-100 min-h-screen">
         <Providers>
-          <div className="relative min-h-screen bg-background text-foreground">
+          <div className="relative min-h-screen bg-[#03060f] text-zinc-100 font-mono">
             <GridBackground />
-            <div className="relative z-10">
+            <div className="relative z-10 font-mono">
               <AppHeader />
               {children}
             </div>

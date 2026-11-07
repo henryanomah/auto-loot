@@ -1,4 +1,5 @@
 import { AssetSymbol } from './market-engine';
+import crypto from 'crypto';
 
 export interface InventoryBalance {
   IRON: number;
@@ -10,7 +11,7 @@ export interface SwapReceipt {
   id: string;
   timestamp: string;
   walletAddress: string;
-  fromAsset: AssetSymbol;
+  fromAsset: AssetSymbol | 'SOL';
   toAsset: AssetSymbol;
   amountIn: number;
   amountOut: number;
@@ -52,10 +53,53 @@ export function updatePlayerInventory(
   return { ...current };
 }
 
+export function purchaseAssetWithSol(
+  walletAddress: string,
+  asset: AssetSymbol,
+  amount: number,
+  solCost: number,
+  txSignature: string
+): { receipt: SwapReceipt; inventory: InventoryBalance } {
+  updatePlayerInventory(walletAddress, asset, amount);
+  const currentSlot = 284000000 + Math.floor(Math.random() * 50000);
+
+  const receipt: SwapReceipt = {
+    id: crypto.randomUUID(),
+    timestamp: new Date().toISOString(),
+    walletAddress,
+    fromAsset: 'SOL',
+    toAsset: asset,
+    amountIn: solCost,
+    amountOut: amount,
+    rate: Number((amount / solCost).toFixed(2)),
+    txSignature,
+    slot: currentSlot,
+    status: 'CONFIRMED',
+    isOnChain: true,
+    reason: `Purchased ${amount} $${asset} with ${solCost} DevNet SOL`,
+  };
+
+  recordSwapReceipt(receipt);
+
+  return {
+    receipt,
+    inventory: getPlayerInventory(walletAddress),
+  };
+}
+
 export function recordSwapReceipt(receipt: SwapReceipt): void {
   swapReceipts.unshift(receipt);
   if (swapReceipts.length > 50) {
     swapReceipts.pop();
+  }
+}
+
+export function updateReceiptOnChain(receiptId: string, txSignature: string, slot?: number): void {
+  const receipt = swapReceipts.find((r) => r.id === receiptId);
+  if (receipt) {
+    receipt.txSignature = txSignature;
+    receipt.isOnChain = true;
+    if (slot) receipt.slot = slot;
   }
 }
 

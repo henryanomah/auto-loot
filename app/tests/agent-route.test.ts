@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { performAtomicSwap, getInventoryTool, getMarketPricesTool } from '../lib/agent-tools';
-import { getPlayerInventory, resetPlayerInventory } from '../lib/player-inventory';
+import { getPlayerInventory, resetPlayerInventory, purchaseAssetWithSol } from '../lib/player-inventory';
 import { evaluateStrategyDeterministic } from '../lib/mastra-agent';
 
 describe('Phase 2: AI Agent & Solana Tools', () => {
@@ -74,5 +74,23 @@ describe('Phase 2: AI Agent & Solana Tools', () => {
     expect(result.executed).toBe(true);
     expect(result.swapResult?.status).toBe('CONFIRMED');
     expect(result.thoughtLog).toContain('Executing atomic swap');
+  });
+
+  it('should support purchasing in-game assets directly with SOL', () => {
+    const result = purchaseAssetWithSol(
+      TEST_WALLET,
+      'GOLD',
+      20,
+      0.05,
+      '5UfD...mockSolTxSignature'
+    );
+
+    expect(result.receipt.status).toBe('CONFIRMED');
+    expect(result.receipt.fromAsset).toBe('SOL');
+    expect(result.receipt.toAsset).toBe('GOLD');
+    expect(result.receipt.amountIn).toBe(0.05);
+    expect(result.receipt.amountOut).toBe(20);
+    expect(result.receipt.isOnChain).toBe(true);
+    expect(result.inventory.GOLD).toBe(35); // 15 starter + 20
   });
 });

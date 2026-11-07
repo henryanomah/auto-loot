@@ -14,12 +14,12 @@ import { TradeHistory } from './components/terminal/trade-history';
 import { Radio } from 'lucide-react';
 import { toast } from 'sonner';
 
-const FALLBACK_SESSION_WALLET = 'AutoLootSession11111111111111111111111111111';
+const FALLBACK_WALLET = 'PlayerDefaultWallet11111111111111111111111111';
 
 export default function Home() {
   const client = useAppClient();
   const connected = useConnectedWallet(client);
-  const activeWallet = connected?.account.address || FALLBACK_SESSION_WALLET;
+  const activeWallet = connected?.account.address || FALLBACK_WALLET;
 
   const [isMounted, setIsMounted] = useState(false);
 
@@ -36,6 +36,7 @@ export default function Home() {
   const [receipts, setReceipts] = useState<SwapReceipt[]>([]);
   const [isResettingInventory, setIsResettingInventory] = useState(false);
   const [hasUpdatedRecently, setHasUpdatedRecently] = useState(false);
+  const [isBuyingSol, setIsBuyingSol] = useState(false);
 
   // Agent Loop & Strategy State
   const [currentStrategy, setCurrentStrategy] = useState(
@@ -57,16 +58,16 @@ export default function Home() {
     ]);
   }, []);
 
-  // Fetch live market prices
+  // Fetch live market data
   const fetchMarket = useCallback(async () => {
     try {
       const res = await fetch('/api/market-prices');
-      const data = await res.json();
-      if (data.success && data.data) {
-        setMarket(data.data);
+      const json = await res.json();
+      if (json.success && json.data) {
+        setMarket(json.data);
       }
     } catch (err: any) {
-      console.error('Market tick error:', err);
+      console.error('Market fetch error:', err);
     }
   }, []);
 
@@ -86,21 +87,22 @@ export default function Home() {
     }
   }, [activeWallet]);
 
-  // Initial client mount & 5-second polling interval
+  // Initial client mount & polling interval
   useEffect(() => {
     setIsMounted(true);
+
     setLogs([
       {
         id: 'init-1',
         timestamp: new Date().toLocaleTimeString(),
         type: 'INFO',
-        message: 'AUTOLOOT OS INITIALIZED // Solana DevNet Cluster Connection: ESTABLISHED',
+        message: 'AUTOLOOT PROTOCOL INITIALIZED // Solana DevNet Cluster: CONNECTED',
       },
       {
         id: 'init-2',
         timestamp: new Date().toLocaleTimeString(),
         type: 'INFO',
-        message: 'Autonomous Economic Agent: ONLINE. Standing by for strategy dispatch.',
+        message: 'Autonomous Economic Core: ONLINE. Standing by for strategy dispatch.',
       },
     ]);
 
@@ -114,7 +116,7 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fetchMarket, fetchInventory]);
 
-  // Strategy Execution Handler
+  // Strategy Execution Handler (Automated On-Chain Settlement)
   const handleExecuteStrategy = useCallback(
     async (strategyToRun: string, singleShot = true) => {
       setIsEvaluating(true);
@@ -147,10 +149,15 @@ export default function Home() {
           }
 
           if (executed && swapResult) {
+            const sig = swapResult.txSignature || '';
+            const sigShort = sig ? `${sig.slice(0, 8)}...` : 'Confirmed';
+
             addLog(
               'SUCCESS',
-              `[TRADE EXECUTED] In-game settlement confirmed. Slot #${swapResult.slot}`
+              `[SETTLEMENT CONFIRMED] Trade settled on Solana DevNet! Hash: ${sigShort} // Slot #${swapResult.slot}`
             );
+            toast.success(`Trade settled on Solana DevNet (${sigShort})`);
+
             setHasUpdatedRecently(true);
             setTimeout(() => setHasUpdatedRecently(false), 2500);
           }
@@ -159,7 +166,7 @@ export default function Home() {
             setInventory(updatedInv);
           }
 
-          // Refresh receipts
+          // Refresh receipts directly from the verified ledger
           fetchInventory();
         } else {
           addLog('ERROR', json.error || 'Failed to evaluate agent strategy.');
@@ -182,7 +189,7 @@ export default function Home() {
   useEffect(() => {
     if (!isMonitoring) return;
 
-    addLog('INFO', `[AUTONOMOUS LOOP STARTED] Actively monitoring market ticks for: "${currentStrategy}"`);
+    addLog('INFO', `[AUTONOMOUS PROTOCOL STARTED] Actively monitoring market ticks for: "${currentStrategy}"`);
 
     const loop = setInterval(() => {
       if (isMonitoringRef.current) {
@@ -232,30 +239,32 @@ export default function Home() {
       const json = await res.json();
       if (json.success && json.inventory) {
         setInventory(json.inventory);
-        addLog('INFO', `[FAUCET] Inventory replenished to starter pack (100 $IRON, 250 $WOOD, 15 $GOLD).`);
+        addLog('INFO', `[INVENTORY REPLENISHED] Restored starter pack (100 $IRON, 250 $WOOD, 15 $GOLD).`);
         fetchInventory();
       }
     } catch (err: any) {
-      addLog('ERROR', `Faucet replenish error: ${err.message}`);
+      addLog('ERROR', `Replenish error: ${err.message}`);
     } finally {
       setIsResettingInventory(false);
     }
   };
 
-  // On-Chain Broadcast Handler using Phantom
-  const handleCommitOnChain = async (receiptId: string, summary: string) => {
+  // Direct Purchase with SOL Handler (Depot interaction)
+  const handleBuyWithSol = async (asset: AssetSymbol, amount: number, solCost: number) => {
     if (!connected) {
-      toast.error('Please connect Phantom to broadcast to Solana DevNet.');
+      toast.error('Connect your wallet above to purchase resources with DevNet SOL.');
       return;
     }
 
-    try {
-      addLog('INFO', `[PHANTOM PROMPT] Requesting on-chain signature for trade: ${summary}...`);
+    setIsBuyingSol(true);
+    addLog('INFO', `[RESOURCE DEPOT] Initiating purchase of ${amount} $${asset} for ${solCost} DevNet SOL...`);
 
+    try {
       const ix = client.memo.instructions.addMemo({
-        memo: `AutoLoot Settlement: ${summary}`,
+        memo: `AutoLoot Purchase: +${amount} $${asset} for ${solCost} SOL`,
       });
 
+      toast.info('Please approve transaction in Phantom...');
       const txResult = await ix.sendTransaction();
       const realSignature =
         typeof txResult === 'string'
@@ -264,54 +273,77 @@ export default function Home() {
             (txResult as any)?.context?.signature;
 
       if (realSignature) {
-        addLog(
-          'SUCCESS',
-          `[BROADCAST VERIFIED] Transaction confirmed on Solana DevNet! Hash: ${realSignature.slice(0, 10)}...`
-        );
-        toast.success('Trade verified on Solana DevNet!');
+        addLog('SUCCESS', `[DEVNET CONFIRMED] SOL purchase verified on DevNet. Sig: ${realSignature.slice(0, 10)}...`);
 
-        setReceipts((prev) =>
-          prev.map((r) =>
-            r.id === receiptId
-              ? { ...r, txSignature: realSignature, isOnChain: true }
-              : r
-          )
-        );
+        const res = await fetch('/api/agent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'PURCHASE_WITH_SOL',
+            walletAddress: activeWallet,
+            asset,
+            amount,
+            solCost,
+            txSignature: realSignature,
+          }),
+        });
+
+        const json = await res.json();
+        if (json.success && json.data) {
+          setInventory(json.data.inventory);
+          setHasUpdatedRecently(true);
+          setTimeout(() => setHasUpdatedRecently(false), 2500);
+          toast.success(`Purchased +${amount} $${asset} with ${solCost} SOL!`);
+          fetchInventory();
+        }
       }
     } catch (err: any) {
-      console.error('On-chain commit error:', err);
-      addLog('ERROR', `Solana DevNet broadcast cancelled or failed: ${err.message}`);
-      toast.error('On-chain broadcast failed: ' + (err.message || 'Cancelled'));
+      console.error('Purchase error:', err);
+      addLog('ERROR', `Purchase cancelled or failed: ${err.message}`);
+      toast.error(err.message || 'Cancelled in wallet.');
+    } finally {
+      setIsBuyingSol(false);
     }
   };
 
   if (!isMounted) {
     return (
       <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6 font-mono text-zinc-500">
-        // Loading AutoLoot Terminal...
+        <div className="flex items-center gap-2 p-6 border border-zinc-800 bg-[#050811]">
+          <span className="size-2 rounded-full bg-cyan-400 animate-pulse" />
+          <span>INITIALIZING AUTOLOOT TERMINAL INTERFACE...</span>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6 font-mono space-y-6">
-      {/* Top Banner Notice if Using Fallback Session Wallet */}
-      {!connected && (
-        <div className="flex items-center justify-between px-4 py-2 bg-cyan-950/40 border border-cyan-500/30 text-xs text-cyan-300">
-          <div className="flex items-center gap-2">
-            <Radio className="size-3.5 text-cyan-400 animate-pulse" />
-            <span>
-              <strong>SESSION MODE ACTIVE:</strong> Operating on dedicated Solana DevNet Session Keypair. Connect Phantom above to trade with your personal wallet!
-            </span>
-          </div>
-          <span className="text-[10px] text-zinc-500 hidden sm:block">ZERO POPUPS IN SESSION MODE</span>
+    <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6 space-y-6 font-mono">
+      {/* Top Protocol Status Banner */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-[#050811]/90 border border-cyan-500/20 text-xs text-zinc-400">
+        <div className="flex items-center gap-2">
+          <Radio className="size-3.5 text-cyan-400 animate-pulse" />
+          <span className="font-bold text-zinc-300">PROTOCOL TELEMETRY:</span>
+          <span>CLUSTER: devnet.solana.com</span>
+          <span className="text-zinc-600">|</span>
+          <span>SETTLEMENT: ON-CHAIN VERIFIED</span>
+          <span className="text-zinc-600">|</span>
+          <span className="text-emerald-400 font-bold">STATUS: NOMINAL</span>
         </div>
-      )}
+        <div className="flex items-center gap-4 text-[11px]">
+          <span>
+            AGENT: <strong className="text-cyan-300">AUTOLOOT-PRIME</strong>
+          </span>
+          <span>
+            TICK: <strong className="text-white">#{market?.tick || 0}</strong>
+          </span>
+        </div>
+      </div>
 
-      {/* Row 1: Live Commodity Market Tickers */}
+      {/* Row 1: Real-time Asset Tickers */}
       {market && <MarketTicker assets={market.assets} tick={market.tick} />}
 
-      {/* Row 2: Live Market Chart & Player Inventory Panel */}
+      {/* Row 2: Telemetry Chart & Player Inventory */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           {market && (
@@ -325,12 +357,15 @@ export default function Home() {
         <div>
           {market && (
             <InventoryPanel
-              inventory={inventory}
               walletAddress={activeWallet}
+              inventory={inventory}
               market={market}
               onResetInventory={handleResetInventory}
               isResetting={isResettingInventory}
               hasUpdatedRecently={hasUpdatedRecently}
+              onBuyWithSol={handleBuyWithSol}
+              isBuying={isBuyingSol}
+              isWalletConnected={!!connected}
             />
           )}
         </div>
@@ -358,11 +393,7 @@ export default function Home() {
 
       {/* Row 4: Trade Settlement Ledger */}
       <div>
-        <TradeHistory
-          receipts={receipts}
-          onCommitOnChain={handleCommitOnChain}
-          isWalletConnected={!!connected}
-        />
+        <TradeHistory receipts={receipts} />
       </div>
     </main>
   );

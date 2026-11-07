@@ -20,6 +20,8 @@ function generateSolanaTxSignature(): string {
 
 export interface SwapResult {
   status: 'CONFIRMED' | 'FAILED' | 'INSUFFICIENT_FUNDS';
+  receiptId?: string;
+  isOnChain?: boolean;
   txSignature?: string;
   slot?: number;
   fromAsset?: AssetSymbol;
@@ -95,6 +97,8 @@ export function performAtomicSwap(params: {
 
   return {
     status: 'CONFIRMED',
+    receiptId: receipt.id,
+    isOnChain: false,
     txSignature,
     slot: currentSlot,
     fromAsset,

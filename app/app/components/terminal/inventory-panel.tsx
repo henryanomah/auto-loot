@@ -1,9 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { InventoryBalance } from '@/lib/player-inventory';
-import { MarketState } from '@/lib/market-engine';
-import { Wallet, RefreshCw, Copy, Check, ShieldCheck } from 'lucide-react';
+import { MarketState, AssetSymbol } from '@/lib/market-engine';
+import { Wallet, RefreshCw, Copy, Check, ShieldCheck, ShoppingCart, Coins, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface InventoryPanelProps {
   inventory: InventoryBalance;
@@ -12,6 +12,9 @@ interface InventoryPanelProps {
   onResetInventory: () => Promise<void>;
   isResetting: boolean;
   hasUpdatedRecently: boolean;
+  onBuyWithSol: (asset: AssetSymbol, amount: number, solCost: number) => Promise<void>;
+  isBuying: boolean;
+  isWalletConnected: boolean;
 }
 
 export function InventoryPanel({
@@ -21,8 +24,13 @@ export function InventoryPanel({
   onResetInventory,
   isResetting,
   hasUpdatedRecently,
+  onBuyWithSol,
+  isBuying,
+  isWalletConnected,
 }: InventoryPanelProps) {
-  const [copied, setCopied] = React.useState(false);
+  const [copied, setCopied] = useState(false);
+  const [showDepot, setShowDepot] = useState(false);
+  const [buyingAsset, setBuyingAsset] = useState<AssetSymbol | null>(null);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(walletAddress);
@@ -30,16 +38,30 @@ export function InventoryPanel({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handlePurchase = async (asset: AssetSymbol, amount: number, solCost: number) => {
+    setBuyingAsset(asset);
+    try {
+      await onBuyWithSol(asset, amount, solCost);
+    } finally {
+      setBuyingAsset(null);
+    }
+  };
+
   const truncatedAddress =
     walletAddress.length > 12
       ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
       : walletAddress;
 
-  // Calculate total portfolio valuation in credits
   const totalValuation =
     inventory.WOOD * (market.assets.WOOD?.price || 2.2) +
     inventory.IRON * (market.assets.IRON?.price || 6.0) +
     inventory.GOLD * (market.assets.GOLD?.price || 58.0);
+
+  const purchaseTiers = [
+    { asset: 'WOOD' as AssetSymbol, amount: 250, solCost: 0.01, color: 'text-emerald-400', border: 'border-emerald-500/30' },
+    { asset: 'IRON' as AssetSymbol, amount: 100, solCost: 0.02, color: 'text-cyan-400', border: 'border-cyan-500/30' },
+    { asset: 'GOLD' as AssetSymbol, amount: 20, solCost: 0.05, color: 'text-amber-400', border: 'border-amber-500/30' },
+  ];
 
   return (
     <div
@@ -65,7 +87,7 @@ export function InventoryPanel({
 
       {/* Wallet Identity Bar */}
       <div className="mt-3 flex items-center justify-between bg-zinc-900/60 border border-zinc-800 px-3 py-2 text-xs font-mono">
-        <span className="text-zinc-500">SESSION KEY:</span>
+        <span className="text-zinc-500">ACTIVE WALLET:</span>
         <div className="flex items-center gap-2">
           <span className="text-cyan-300 font-bold">{truncatedAddress}</span>
           <button
@@ -123,17 +145,63 @@ export function InventoryPanel({
         </div>
       </div>
 
+      {/* Resource Purchase Depot Section */}
+      <div className="mt-4 border border-cyan-500/20 bg-zinc-950/60 p-3">
+        <button
+          onClick={() => setShowDepot(!showDepot)}
+          className="flex w-full items-center justify-between text-xs font-mono font-bold text-cyan-300 hover:text-cyan-200 transition-colors"
+        >
+          <div className="flex items-center gap-1.5">
+            <Coins className="size-3.5 text-amber-400" />
+            <span>BUY IN-GAME ASSETS WITH DEVNET SOL</span>
+          </div>
+          {showDepot ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+        </button>
+
+        {showDepot && (
+          <div className="mt-3 space-y-2 pt-2 border-t border-zinc-800">
+            {purchaseTiers.map((tier) => (
+              <div
+                key={tier.asset}
+                className={`flex items-center justify-between p-2 bg-zinc-900/80 border ${tier.border} text-xs font-mono`}
+              >
+                <div>
+                  <div className={`font-bold ${tier.color}`}>
+                    +{tier.amount} ${tier.asset}
+                  </div>
+                  <div className="text-[10px] text-zinc-500">Cost: {tier.solCost} DevNet SOL</div>
+                </div>
+
+                <button
+                  disabled={isBuying || !isWalletConnected}
+                  onClick={() => handlePurchase(tier.asset, tier.amount, tier.solCost)}
+                  className="flex items-center gap-1 px-3 py-1 font-mono text-[11px] font-bold bg-cyan-500/20 border border-cyan-500/50 text-cyan-300 hover:bg-cyan-500/30 disabled:opacity-40 transition-all"
+                >
+                  <ShoppingCart className="size-3" />
+                  {buyingAsset === tier.asset ? 'BUYING...' : 'BUY WITH SOL'}
+                </button>
+              </div>
+            ))}
+            {!isWalletConnected && (
+              <p className="text-[10px] text-zinc-500 italic text-center mt-1">
+                // Connect Phantom wallet above to purchase assets with DevNet SOL.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Portfolio Valuation & Faucet Reset */}
       <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono">
         <div>
-          <span className="text-zinc-500">EST. NET WORTH:</span>{' '}
+          <span className="text-zinc-500">NET WORTH:</span>{' '}
           <span className="text-cyan-400 font-bold">{totalValuation.toFixed(2)} CREDITS</span>
         </div>
 
         <button
           onClick={onResetInventory}
           disabled={isResetting}
-          className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20 disabled:opacity-50 transition-all"
+          className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-mono font-bold bg-zinc-900 border border-zinc-700 text-zinc-300 hover:bg-zinc-800 disabled:opacity-50 transition-all"
         >
           <RefreshCw className={`size-3 ${isResetting ? 'animate-spin' : ''}`} />
           Replenish Starter Pack
