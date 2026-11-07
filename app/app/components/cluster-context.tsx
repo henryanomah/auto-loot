@@ -3,13 +3,12 @@
 import {
   createContext,
   useContext,
-  useCallback,
-  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import type { ClusterMoniker } from "../lib/solana-client";
-import { CLUSTERS } from "../lib/solana-client";
 import { getExplorerUrl } from "../lib/explorer";
+
+export const CLUSTERS: ClusterMoniker[] = ["devnet"];
 
 type ClusterContextValue = {
   cluster: ClusterMoniker;
@@ -17,77 +16,28 @@ type ClusterContextValue = {
   getExplorerUrl: (path: string) => string;
 };
 
-const ClusterContext = createContext<ClusterContextValue | null>(null);
+const defaultExplorerUrl = (path: string) => getExplorerUrl(path, "devnet");
 
-const STORAGE_KEY = "solana-cluster";
-const CLUSTER_EVENT = "cluster-change";
-let memoryCluster: ClusterMoniker = "devnet";
-
-function readStoredCluster(): ClusterMoniker {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === null) {
-      return memoryCluster;
-    }
-    if (CLUSTERS.includes(stored as ClusterMoniker)) {
-      memoryCluster = stored as ClusterMoniker;
-    } else {
-      memoryCluster = "devnet";
-    }
-  } catch {
-    // localStorage unavailable (e.g. Safari private mode)
-  }
-  return memoryCluster;
-}
-
-function getServerCluster(): ClusterMoniker {
-  return "devnet";
-}
-
-function subscribeCluster(callback: () => void) {
-  window.addEventListener(CLUSTER_EVENT, callback);
-  window.addEventListener("storage", callback);
-  return () => {
-    window.removeEventListener(CLUSTER_EVENT, callback);
-    window.removeEventListener("storage", callback);
-  };
-}
-
-export { CLUSTERS };
+const ClusterContext = createContext<ClusterContextValue>({
+  cluster: "devnet",
+  setCluster: () => {},
+  getExplorerUrl: defaultExplorerUrl,
+});
 
 export function ClusterProvider({ children }: { children: ReactNode }) {
-  const cluster = useSyncExternalStore(
-    subscribeCluster,
-    readStoredCluster,
-    getServerCluster
-  );
-
-  const setCluster = useCallback((c: ClusterMoniker) => {
-    memoryCluster = c;
-    try {
-      localStorage.setItem(STORAGE_KEY, c);
-    } catch {
-      // localStorage unavailable (e.g. Safari private mode)
-    }
-    window.dispatchEvent(new Event(CLUSTER_EVENT));
-  }, []);
-
-  const explorerUrl = useCallback(
-    (path: string) => getExplorerUrl(path, cluster),
-    [cluster]
-  );
+  const value: ClusterContextValue = {
+    cluster: "devnet",
+    setCluster: () => {},
+    getExplorerUrl: defaultExplorerUrl,
+  };
 
   return (
-    <ClusterContext.Provider
-      value={{ cluster, setCluster, getExplorerUrl: explorerUrl }}
-    >
+    <ClusterContext.Provider value={value}>
       {children}
     </ClusterContext.Provider>
   );
 }
 
 export function useCluster() {
-  const ctx = useContext(ClusterContext);
-  if (!ctx) throw new Error("useCluster must be used within ClusterProvider");
-  return ctx;
+  return useContext(ClusterContext);
 }

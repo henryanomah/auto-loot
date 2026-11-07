@@ -1,28 +1,13 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Inter, Geist } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./components/providers";
 import { AppHeader } from "./components/app-header";
 import { GridBackground } from "./components/grid-background";
-import { cn } from "@/lib/utils";
-
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
-  title: "Solana Kit Starter",
+  title: "AutoLoot // AI-Managed In-Game Economist",
   description:
-    "Wallet connection and on-chain actions with @solana/kit, the kit plugin client, and @solana/react",
+    "Autonomous Solana DevNet inventory optimization protocol for tokenized gaming economies.",
   icons: {
     icon: "/icon.svg",
     shortcut: "/icon.svg",
@@ -36,8 +21,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={cn("font-sans", geist.variable)}>
-      <body className={`${inter.variable} ${geistMono.variable} antialiased`}>
+    <html lang="en" suppressHydrationWarning className="font-sans dark">
+      <body className="antialiased font-mono bg-[#03060f] text-zinc-100 min-h-screen">
         <Providers>
           <div className="relative min-h-screen bg-background text-foreground">
             <GridBackground />

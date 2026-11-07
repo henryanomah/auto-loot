@@ -19,6 +19,7 @@ export interface SwapReceipt {
   slot: number;
   status: 'CONFIRMED' | 'FAILED';
   reason?: string;
+  isOnChain?: boolean;
 }
 
 // In-memory inventory store keyed by wallet public key

@@ -181,14 +181,19 @@ export function WalletButton() {
               </p>
             )}
             {connectMenuError != null && (
-              <p
-                className="mt-2 break-words text-xs text-destructive [overflow-wrap:anywhere]"
-                role="alert"
-              >
-                {connectMenuError instanceof Error
-                  ? connectMenuError.message
-                  : String(connectMenuError)}
-              </p>
+              <div className="mt-2 space-y-1 border-t border-border-low pt-2">
+                <p
+                  className="break-words text-xs text-destructive [overflow-wrap:anywhere]"
+                  role="alert"
+                >
+                  {connectMenuError instanceof Error
+                    ? connectMenuError.message
+                    : String(connectMenuError)}
+                </p>
+                <p className="text-[11px] text-zinc-400 leading-tight">
+                  Note: AutoLoot is a Solana DevNet application. Please connect a native Solana wallet like <strong>Phantom</strong> or <strong>Solflare</strong>. (EVM MetaMask requires a Solana Snap).
+                </p>
+              </div>
             )}
           </div>
         )}

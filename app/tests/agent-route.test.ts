@@ -16,7 +16,7 @@ describe('Phase 2: AI Agent & Solana Tools', () => {
     expect(inventory.WOOD).toBe(250);
     expect(inventory.GOLD).toBe(15);
 
-    const toolResult = await getInventoryTool.execute({ walletAddress: TEST_WALLET });
+    const toolResult = await (getInventoryTool.execute as any)({ walletAddress: TEST_WALLET }, {});
     expect(toolResult.status).toBe('SUCCESS');
     expect(toolResult.balances.IRON).toBe(100);
   });
