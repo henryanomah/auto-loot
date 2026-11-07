@@ -1,0 +1,53 @@
+import type { Metadata } from "next";
+import { Geist_Mono, Inter, Geist } from "next/font/google";
+import "./globals.css";
+import { Providers } from "./components/providers";
+import { AppHeader } from "./components/app-header";
+import { GridBackground } from "./components/grid-background";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+  display: "swap",
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Solana Kit Starter",
+  description:
+    "Wallet connection and on-chain actions with @solana/kit, the kit plugin client, and @solana/react",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en" suppressHydrationWarning className={cn("font-sans", geist.variable)}>
+      <body className={`${inter.variable} ${geistMono.variable} antialiased`}>
+        <Providers>
+          <div className="relative min-h-screen bg-background text-foreground">
+            <GridBackground />
+            <div className="relative z-10">
+              <AppHeader />
+              {children}
+            </div>
+          </div>
+        </Providers>
+      </body>
+    </html>
+  );
+}
