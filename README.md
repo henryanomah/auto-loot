@@ -6,7 +6,7 @@
 [![Solana DevNet](https://img.shields.io/badge/Solana-DevNet-14F195?logo=solana&logoColor=white)](https://explorer.solana.com/?cluster=devnet)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16.4.3-black?logo=next.js)](https://nextjs.org/)
 [![Mastra AI](https://img.shields.io/badge/Agent-Mastra%20AI-blueviolet)](https://mastra.ai/)
-[![Groq Llama 3.3](https://img.shields.io/badge/LLM-Groq%20Llama%203.3%2070B-f55036)](https://groq.com/)
+[![Groq Llama 3.1](https://img.shields.io/badge/LLM-Groq%20Llama%203.1%208B-f55036)](https://groq.com/)
 [![Tests](https://img.shields.io/badge/Vitest-25%2F25%20Passing-success)](https://vitest.dev/)
 
 ---
@@ -32,7 +32,7 @@ In traditional Web2 games, players spend hours farming, crafting, and monitoring
 
 ## Key Features
 
-- **Natural Language Strategy Engine:** Powered by Mastra and Groq Llama 3.3 70B with deterministic heuristic fallback for zero-latency execution.
+- **Natural Language Strategy Engine:** Powered by Mastra and Groq Llama 3.1 8B with deterministic heuristic fallback for zero-latency execution.
 - **Zero-Popup Background Autonomous Execution:** Executes scheduled trade evaluations and settles transactions on Solana DevNet automatically without disrupting the gameplay experience with browser wallet popups.
 - **Real-Time Dynamic Market Engine:** Simulated live commodity economy with tick updates every 5 seconds, dynamic cross-rate matrices, and interactive volatility shock triggers.
 - **Session PnL & Net Worth Analytics:** Real-time tracking of portfolio valuation (Credits and SOL equivalent), session profit/loss percentage, trade counts, and win rates.
@@ -65,7 +65,7 @@ flowchart TD
 
     subgraph AI ["AI Reasoning Layer"]
         MastraAgent[Mastra AI Framework]
-        GroqLLM[Groq Llama 3.3 70B]
+        GroqLLM[Groq Llama 3.1 8B]
         FallbackEngine[Deterministic Math Evaluator]
     end
 
@@ -100,7 +100,7 @@ AutoLoot adheres to documented architectural standards to guarantee security, ve
 | :--- | :--- | :--- |
 | [**ADR-0001**](docs/adr/0001-autonomous-execution-and-session-key-custody.md) | Autonomous Execution & Session Custody  | Decouple manual Phantom authorization from background trading by utilizing an ephemeral server-side protocol signer, eliminating disruptive browser popups while preserving cryptographic proofs. |
 | [**ADR-0002**](docs/adr/0002-atomic-swap-settlement.md) | Atomic Swap Settlement Engine | Execute inventory updates atomically with real on-chain Solana Memo program broadcasts on DevNet, ensuring verifiable transactions with 1-second finality. |
-| [**ADR-0003**](docs/adr/0003-continuous-agent-monitoring-loop.md) | Continuous Agent Monitoring Loop |  Run client-orchestrated 5-second tick polling with Groq Llama 3.3 70B reasoning and an instant deterministic math fallback, ensuring continuous uptime and zero missed trades. |
+| [**ADR-0003**](docs/adr/0003-continuous-agent-monitoring-loop.md) | Continuous Agent Monitoring Loop |  Run client-orchestrated 5-second tick polling with Groq Llama 3.1 8B reasoning and an instant deterministic math fallback, ensuring continuous uptime and zero missed trades. |
 
 ---
 
@@ -111,7 +111,7 @@ AutoLoot adheres to documented architectural standards to guarantee security, ve
 | **Framework** | Next.js 16.4.3 (Turbopack, App Router) |
 | **Styling & UI** | Tailwind CSS, Lucide Icons, Sonner Toasts |
 | **Solana Web3** | `@solana/kit`, `@solana/kit-plugin-wallet`, `@solana/web3.js` |
-| **AI Agent** | Mastra AI (`@mastra/core`), Groq SDK (Llama 3.3 70B Versatile) |
+| **AI Agent** | Mastra AI (`@mastra/core`), Groq SDK (Llama 3.1 8B Instant) |
 | **Testing** | Vitest, TypeScript (strict mode) |
 | **Target Network** | Solana DevNet (`https://api.devnet.solana.com`) |
 
@@ -166,7 +166,7 @@ pnpm build
 | Criteria | AutoLoot Implementation |
 | :--- | :--- |
 | **Solana Integration** | Real on-chain DevNet transaction broadcast for every autonomous swap via the Solana Memo program, interactive Phantom purchases, and instant Explorer verification. |
-| **AI Innovation** | Uses Mastra and Groq Llama 3.3 70B to parse ambiguous player directives into structured mathematical conditions, evaluate live tick cross-rates, and execute atomic trades. |
+| **AI Innovation** | Uses Mastra and Groq Llama 3.1 8B to parse ambiguous player directives into structured mathematical conditions, evaluate live tick cross-rates, and execute atomic trades. |
 | **Zero-Friction UX** | Solves the primary pain point of Web3 gaming by eliminating repetitive browser wallet popups during automated execution loops while maintaining player custody and emergency circuit breakers. |
 | **Engineering Rigor** | 25 passing unit tests, zero TypeScript errors, clean modular separation of concerns, and full defensive error handling. |
 

@@ -40,7 +40,7 @@ export function createAutoLootAgent(groqApiKey?: string) {
     name: 'AutoLoot-Economist',
     instructions: SYSTEM_INSTRUCTIONS,
     model: {
-      id: 'groq/llama-3.3-70b-versatile',
+      id: (process.env.GROQ_MODEL as any) || 'groq/llama-3.1-8b-instant',
       apiKey,
     },
     tools: {
@@ -234,14 +234,34 @@ PLAYER STRATEGY:
 Evaluate the strategy mathematically. If conditions are met and player has balance, execute the atomic swap. Output your telemetry reasoning.
 `;
 
-      const completion = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: SYSTEM_INSTRUCTIONS },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.2,
-      });
+      const primaryModel = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
+      let completion: any = null;
+
+      try {
+        completion = await groq.chat.completions.create({
+          model: primaryModel,
+          messages: [
+            { role: 'system', content: SYSTEM_INSTRUCTIONS },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.2,
+        });
+      } catch (modelErr: any) {
+        // If the primary model returns 404 model_not_found, fallback to llama-3.1-8b-instant
+        if (primaryModel !== 'llama-3.1-8b-instant') {
+          console.warn(`Groq model ${primaryModel} failed (${modelErr?.message}), falling back to llama-3.1-8b-instant`);
+          completion = await groq.chat.completions.create({
+            model: 'llama-3.1-8b-instant',
+            messages: [
+              { role: 'system', content: SYSTEM_INSTRUCTIONS },
+              { role: 'user', content: prompt },
+            ],
+            temperature: 0.2,
+          });
+        } else {
+          throw modelErr;
+        }
+      }
 
       const responseText = completion.choices[0]?.message?.content || '';
 

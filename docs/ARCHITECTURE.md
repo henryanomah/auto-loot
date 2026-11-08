@@ -25,7 +25,7 @@ AutoLoot separates high-frequency autonomous trading loops from user wallet cust
 │   Solana DevNet Cluster │       │  AutoLoot Backend Core    │
 │                         │       │                           │
 │  - Memo Program         │◄──────┤  1. Mastra AI Framework   │
-│  - Protocol Keypair     │ On-   │  2. Groq Llama 3.3 70B    │
+│  - Protocol Keypair     │ On-   │  2. Groq Llama 3.1 8B     │
 │  - Verifiable Ledgers   │ Chain │  3. Failsafe Risk Rails   │
 │                         │ Memo  │  4. Solana Settlement     │
 └─────────────────────────┘       └───────────────────────────┘
@@ -60,7 +60,7 @@ Players write directives in natural language:
 
 ### 2. Multi-Tier Evaluation:
 1. **Tier A (LLM Reasoning via Groq):**
-   - The directive, current market prices, tick index, cross-rates, and player inventory balances are passed to Groq running `llama-3.3-70b-versatile`.
+   - The directive, current market prices, tick index, cross-rates, and player inventory balances are passed to Groq running `llama-3.1-8b-instant` (with optional model override via `GROQ_MODEL`).
    - The model mathematically validates the condition against the cross-rate matrix and decides whether to emit a `SWAP` or `HOLD` decision.
 2. **Tier B (Zero-Latency Deterministic Heuristic Fallback):**
    - If the LLM provider experiences latency spikes or network timeouts, the system falls back to a deterministic regex parser and mathematical cross-rate comparator ([`mastra-agent.ts`](file:///home/hayax/solana/auto-loot/app/lib/mastra-agent.ts)).

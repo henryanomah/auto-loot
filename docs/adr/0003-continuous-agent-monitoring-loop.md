@@ -10,7 +10,7 @@ If the backend evaluates the strategy only once upon submission (Single-Shot), t
 We implement a **Continuous Monitoring Loop with Real-Time Telemetry Streaming**:
 1. When a Trading Strategy is submitted, the Autonomous Agent enters an **ACTIVE / MONITORING** state in the dashboard.
 2. The agent continuously receives Market price ticks (every 5 seconds) alongside Player Inventory updates.
-3. The LLM (Mastra + Groq Llama 3) evaluates the current market state against the strategy directives and outputs structured telemetry logs (e.g. `[14:02:10] Gold at 11.4 Iron. Target < 10.0. Holding position.`).
+3. The LLM (Mastra + Groq Llama 3.1 8B) evaluates the current market state against the strategy directives and outputs structured telemetry logs (e.g. `[14:02:10] Gold at 11.4 Iron. Target < 10.0. Holding position.`).
 4. As soon as the price fluctuation satisfies the strategy criteria, the agent triggers the on-chain swap tool, broadcasts the transaction, confirms receipt, and reports the Solana Explorer transaction signature in the telemetry stream.
 5. The player can pause, stop, or update the strategy at any time via the terminal UI.
 
