@@ -7,6 +7,8 @@ import {
   resetPlayerInventory,
   purchaseAssetWithSol,
   updateReceiptOnChain,
+  updatePlayerInventory,
+  removeSwapReceipt,
 } from '@/lib/player-inventory';
 import { getCurrentMarketPrices, evolveMarketPrices, AssetSymbol } from '@/lib/market-engine';
 import { broadcastOnChainSettlement } from '@/lib/solana-settlement';
@@ -16,8 +18,28 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const walletAddress = searchParams.get('walletAddress') || 'default-player';
+    const walletAddress = searchParams.get('walletAddress');
     const reset = searchParams.get('reset') === 'true';
+
+    // Disconnected / invalid wallet guard: return empty verified state
+    if (
+      !walletAddress ||
+      walletAddress.length < 32 ||
+      walletAddress.startsWith('PlayerDefault') ||
+      walletAddress === 'default-player' ||
+      walletAddress === 'demo-session-wallet'
+    ) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          walletAddress: '',
+          inventory: { WOOD: 250, IRON: 100, GOLD: 15 },
+          recentSwaps: [],
+          currentMarket: getCurrentMarketPrices(),
+          agentStatus: 'DISCONNECTED',
+        },
+      });
+    }
 
     if (reset) {
       const resetInventory = resetPlayerInventory(walletAddress);
@@ -108,7 +130,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const activeWallet = walletAddress || 'demo-session-wallet';
+    const activeWallet = walletAddress;
+
+    // Reject unauthenticated/simulated requests
+    if (
+      !activeWallet ||
+      typeof activeWallet !== 'string' ||
+      activeWallet.length < 32 ||
+      activeWallet.startsWith('PlayerDefault') ||
+      activeWallet === 'default-player' ||
+      activeWallet === 'demo-session-wallet'
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'A connected Solana wallet is required to dispatch autonomous directives. Off-chain simulated trading is strictly disabled.',
+        },
+        { status: 400 }
+      );
+    }
 
     // Synchronize client-provided inventory across serverless lambdas
     if (clientInventory && typeof clientInventory === 'object') {
@@ -128,7 +169,8 @@ export async function POST(request: NextRequest) {
 
     // If trade executed, broadcast on-chain settlement directly to Solana DevNet
     if (evaluation.executed && evaluation.swapResult) {
-      const summary = `-${evaluation.swapResult.amountIn} $${evaluation.swapResult.fromAsset} -> +${evaluation.swapResult.amountOut} $${evaluation.swapResult.toAsset} for ${activeWallet.slice(0, 8)}...`;
+      const initialSwap = evaluation.swapResult;
+      const summary = `-${initialSwap.amountIn} $${initialSwap.fromAsset} -> +${initialSwap.amountOut} $${initialSwap.toAsset} for ${activeWallet.slice(0, 8)}...`;
       try {
         const onChain = await broadcastOnChainSettlement({
           memo: `AutoLoot Settlement: ${summary}`,
@@ -136,23 +178,45 @@ export async function POST(request: NextRequest) {
         });
 
         if (onChain.isConfirmed && onChain.signature) {
-          evaluation.swapResult.txSignature = onChain.signature;
-          evaluation.swapResult.slot = onChain.slot;
-          evaluation.swapResult.isOnChain = true;
-          evaluation.swapResult.explorerUrl = `https://explorer.solana.com/tx/${onChain.signature}?cluster=devnet`;
-          if (evaluation.swapResult.receiptId) {
-            updateReceiptOnChain(evaluation.swapResult.receiptId, onChain.signature, onChain.slot);
+          initialSwap.txSignature = onChain.signature;
+          initialSwap.slot = onChain.slot;
+          initialSwap.isOnChain = true;
+          initialSwap.explorerUrl = `https://explorer.solana.com/tx/${onChain.signature}?cluster=devnet`;
+          if (initialSwap.receiptId) {
+            updateReceiptOnChain(initialSwap.receiptId, onChain.signature, onChain.slot);
           }
         } else {
-          // Off-chain simulated fallback
-          evaluation.swapResult.isOnChain = false;
-          evaluation.swapResult.broadcastError =
-            onChain.broadcastError || 'Settlement executed off-chain; DevNet unconfirmed';
+          // STRICT REQUIREMENT: ZERO OFF-CHAIN SIMULATION.
+          // Roll back optimistic balance updates and purge receipt
+          if (initialSwap.receiptId) {
+            removeSwapReceipt(initialSwap.receiptId);
+          }
+          if (initialSwap.fromAsset && initialSwap.toAsset) {
+            updatePlayerInventory(activeWallet, initialSwap.fromAsset, initialSwap.amountIn || 0);
+            updatePlayerInventory(activeWallet, initialSwap.toAsset, -(initialSwap.amountOut || 0));
+          }
+
+          evaluation.executed = false;
+          evaluation.decision = 'HOLD';
+          evaluation.thoughtLog = `[SETTLEMENT REJECTED] On-chain Solana DevNet transaction unconfirmed (${onChain.broadcastError || 'Transaction rejected by DevNet validator'}). Zero off-chain simulation allowed. Balances preserved.`;
+          evaluation.swapResult = undefined;
+          evaluation.inventory = getPlayerInventory(activeWallet);
         }
       } catch (err: any) {
-        evaluation.swapResult.isOnChain = false;
-        evaluation.swapResult.broadcastError = err?.message || 'On-chain broadcast exception';
-        console.warn('On-chain settlement broadcast note:', err);
+        if (initialSwap.receiptId) {
+          removeSwapReceipt(initialSwap.receiptId);
+        }
+        if (initialSwap.fromAsset && initialSwap.toAsset) {
+          updatePlayerInventory(activeWallet, initialSwap.fromAsset, initialSwap.amountIn || 0);
+          updatePlayerInventory(activeWallet, initialSwap.toAsset, -(initialSwap.amountOut || 0));
+        }
+
+        evaluation.executed = false;
+        evaluation.decision = 'HOLD';
+        evaluation.thoughtLog = `[SETTLEMENT REJECTED] On-chain Solana DevNet transaction error (${err?.message || 'Broadcast error'}). Zero off-chain simulation allowed. Balances preserved.`;
+        evaluation.swapResult = undefined;
+        evaluation.inventory = getPlayerInventory(activeWallet);
+        console.warn('On-chain settlement broadcast failed, trade rolled back:', err);
       }
     }
 

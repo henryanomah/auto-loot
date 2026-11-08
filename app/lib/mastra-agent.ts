@@ -27,9 +27,12 @@ OPERATIONAL PROTOCOL:
      - Output an analytical status telemetry explaining the current rate vs target threshold, and state that you are HOLDING position.
    - If the player has INSUFFICIENT BALANCE:
      - DO NOT execute. Report insufficient inventory.
-3. OUTPUT FORMAT:
-   - Always speak in a sharp, futuristic exchange terminal telemetry style.
-   - Mention the current market tick, prices, exact condition evaluated, and final action (SWAP or HOLD).
+3. OUTPUT FORMAT RULES:
+   - Format telemetry cleanly in 2 to 4 concise bullet lines with line breaks:
+     [TICK #<tick>] <Market Cross-Rate> (Target: <threshold>) -> Condition <MET / UNMET>
+     [INVENTORY] Required: <amount> <ASSET> | Available: <amount> <ASSET> (<STATUS>)
+     [ACTION] <SWAP / HOLD> - <1-sentence concise reason>
+   - NEVER output markdown code blocks or raw JSON dumps. Keep telemetry clean and readable.
 `;
 
 export function createAutoLootAgent(groqApiKey?: string) {
@@ -40,7 +43,7 @@ export function createAutoLootAgent(groqApiKey?: string) {
     name: 'AutoLoot-Economist',
     instructions: SYSTEM_INSTRUCTIONS,
     model: {
-      id: (process.env.GROQ_MODEL as any) || 'groq/llama-3.1-8b-instant',
+      id: (process.env.GROQ_MODEL as any) || 'groq/openai/gpt-oss-120b',
       apiKey,
     },
     tools: {
@@ -187,6 +190,49 @@ export async function evaluateStrategyDeterministic(params: {
   };
 }
 
+let cachedAvailableModel: string | null = null;
+
+/**
+ * Dynamically queries Groq for the models accessible by this specific API key.
+ * This guarantees compatibility even if the Groq project has scoped permissions.
+ */
+async function resolveGroqModel(apiKey: string): Promise<string> {
+  if (process.env.GROQ_MODEL) {
+    return process.env.GROQ_MODEL;
+  }
+  if (cachedAvailableModel) {
+    return cachedAvailableModel;
+  }
+
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/models', {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (res.ok) {
+      const body = await res.json();
+      if (Array.isArray(body.data) && body.data.length > 0) {
+        const availableIds: string[] = body.data.map((m: any) => m.id);
+        const priorities = [
+          'openai/gpt-oss-120b',
+          'openai/gpt-oss-20b',
+          'llama-3.3-70b-versatile',
+          'llama-3.1-8b-instant',
+        ];
+        const selected =
+          priorities.find((p) => availableIds.includes(p)) || availableIds[0];
+        if (selected) {
+          cachedAvailableModel = selected;
+          return selected;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[AutoLoot Groq] Model discovery fallback:', err);
+  }
+
+  return 'openai/gpt-oss-120b';
+}
+
 /**
  * Primary Strategy Runner
  * Tries LLM via Groq + Mastra, with seamless heuristic fallback
@@ -234,34 +280,15 @@ PLAYER STRATEGY:
 Evaluate the strategy mathematically. If conditions are met and player has balance, execute the atomic swap. Output your telemetry reasoning.
 `;
 
-      const primaryModel = process.env.GROQ_MODEL || 'llama-3.1-8b-instant';
-      let completion: any = null;
-
-      try {
-        completion = await groq.chat.completions.create({
-          model: primaryModel,
-          messages: [
-            { role: 'system', content: SYSTEM_INSTRUCTIONS },
-            { role: 'user', content: prompt },
-          ],
-          temperature: 0.2,
-        });
-      } catch (modelErr: any) {
-        // If the primary model returns 404 model_not_found, fallback to llama-3.1-8b-instant
-        if (primaryModel !== 'llama-3.1-8b-instant') {
-          console.warn(`Groq model ${primaryModel} failed (${modelErr?.message}), falling back to llama-3.1-8b-instant`);
-          completion = await groq.chat.completions.create({
-            model: 'llama-3.1-8b-instant',
-            messages: [
-              { role: 'system', content: SYSTEM_INSTRUCTIONS },
-              { role: 'user', content: prompt },
-            ],
-            temperature: 0.2,
-          });
-        } else {
-          throw modelErr;
-        }
-      }
+      const targetModel = await resolveGroqModel(apiKey);
+      const completion = await groq.chat.completions.create({
+        model: targetModel,
+        messages: [
+          { role: 'system', content: SYSTEM_INSTRUCTIONS },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.2,
+      });
 
       const responseText = completion.choices[0]?.message?.content || '';
 

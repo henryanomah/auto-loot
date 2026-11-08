@@ -136,6 +136,7 @@ export function WalletButton() {
     return (
       <div className="relative font-mono" ref={ref}>
         <button
+          id="solana-wallet-connect-trigger"
           ref={triggerRef}
           onClick={() => (isOpen ? close() : open())}
           aria-expanded={isOpen}

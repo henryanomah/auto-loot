@@ -64,7 +64,19 @@ export function InventoryPanel({
     (customAmount * SOL_RATES[selectedAsset]).toFixed(4)
   );
 
+  const handleTriggerWalletConnect = () => {
+    const trigger = document.getElementById('solana-wallet-connect-trigger');
+    if (trigger) {
+      trigger.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      trigger.click();
+    }
+  };
+
   const handlePurchase = () => {
+    if (!isWalletConnected) {
+      handleTriggerWalletConnect();
+      return;
+    }
     if (customAmount <= 0 || calculatedSolCost <= 0) return;
     onBuyWithSol(selectedAsset, customAmount, calculatedSolCost);
   };
@@ -242,8 +254,9 @@ export function InventoryPanel({
               </div>
 
               <button
-                disabled={isBuying || !isWalletConnected || customAmount <= 0}
+                disabled={isBuying || (isWalletConnected && customAmount <= 0)}
                 onClick={handlePurchase}
+                title={!isWalletConnected ? 'Connect your Solana wallet to purchase with SOL' : undefined}
                 className="flex w-full items-center justify-center gap-1.5 py-2 font-bold text-xs bg-cyan-500 text-black hover:bg-cyan-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-[0_0_12px_rgba(0,243,255,0.3)] cursor-pointer"
               >
                 <ShoppingCart className="size-3.5" />

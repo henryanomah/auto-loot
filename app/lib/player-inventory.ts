@@ -110,6 +110,13 @@ export function recordSwapReceipt(receipt: SwapReceipt): void {
   }
 }
 
+export function removeSwapReceipt(receiptId: string): void {
+  const idx = swapReceipts.findIndex((r) => r.id === receiptId);
+  if (idx !== -1) {
+    swapReceipts.splice(idx, 1);
+  }
+}
+
 export function updateReceiptOnChain(receiptId: string, txSignature: string, slot?: number): void {
   const receipt = swapReceipts.find((r) => r.id === receiptId);
   if (receipt) {
@@ -120,8 +127,12 @@ export function updateReceiptOnChain(receiptId: string, txSignature: string, slo
 }
 
 export function getRecentSwapReceipts(walletAddress?: string): SwapReceipt[] {
-  if (!walletAddress) return [...swapReceipts];
-  return swapReceipts.filter((r) => r.walletAddress === walletAddress);
+  // STRICT REQUIREMENT: Only verified on-chain settlements
+  const verified = swapReceipts.filter(
+    (r) => r.isOnChain && r.txSignature && !r.txSignature.startsWith('mock_')
+  );
+  if (!walletAddress) return verified;
+  return verified.filter((r) => r.walletAddress === walletAddress);
 }
 
 export function resetPlayerInventory(walletAddress: string): InventoryBalance {

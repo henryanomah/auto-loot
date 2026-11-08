@@ -12,6 +12,7 @@ describe('Server-Side Solana Settlement Core', () => {
   it('should construct and sign an atomic trade settlement transaction', async () => {
     const result = await broadcastOnChainSettlement({
       memo: 'AutoLoot Settlement Unit Test: -20 $IRON -> +2.5 $GOLD',
+      playerWalletAddress: 'AFDL5hYgh1hposGXTmAAR6R3sGUF6cZFF9qETMwWpn1t',
     });
 
     expect(result).toBeDefined();

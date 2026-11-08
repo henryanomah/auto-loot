@@ -151,23 +151,10 @@ export async function broadcastOnChainSettlement({
       };
     }
 
-    const baseMemoIx = getAddMemoInstruction({ memo });
-    let memoIx: any = baseMemoIx;
-
-    // Link player's wallet address as a readonly account so the transaction
-    // is permanently indexed and visible under the player's wallet on Solana Explorer
-    if (playerWalletAddress && playerWalletAddress.length >= 32 && playerWalletAddress.length <= 44) {
-      try {
-        memoIx = {
-          ...baseMemoIx,
-          accounts: [
-            { address: address(playerWalletAddress), role: AccountRole.READONLY },
-          ],
-        };
-      } catch {
-        memoIx = baseMemoIx;
-      }
-    }
+    const effectiveMemo = playerWalletAddress
+      ? `${memo} | Wallet: ${playerWalletAddress}`
+      : memo;
+    const memoIx = getAddMemoInstruction({ memo: effectiveMemo });
 
     const transactionMessage = pipe(
       createTransactionMessage({ version: 0 }),

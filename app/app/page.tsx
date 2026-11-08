@@ -25,7 +25,12 @@ const FALLBACK_WALLET = 'PlayerDefaultWallet11111111111111111111111111';
 export default function Home() {
   const client = useAppClient();
   const connected = useConnectedWallet(client);
-  const activeWallet = connected?.account.address || FALLBACK_WALLET;
+  const isWalletConnected = Boolean(
+    connected?.account?.address &&
+    typeof connected.account.address === 'string' &&
+    connected.account.address.length >= 32
+  );
+  const activeWallet = isWalletConnected ? connected!.account.address : '';
 
   const [isMounted, setIsMounted] = useState(false);
 
@@ -49,13 +54,38 @@ export default function Home() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
+      // Purge legacy mock/simulated wallet entries from local storage
+      localStorage.removeItem('autoloot_receipts_PlayerDefaultWallet11111111111111111111111111');
+      localStorage.removeItem('autoloot_inventory_PlayerDefaultWallet11111111111111111111111111');
+      localStorage.removeItem('autoloot_receipts_demo-session-wallet');
+      localStorage.removeItem('autoloot_inventory_demo-session-wallet');
+
+      if (!isWalletConnected || !activeWallet) {
+        setReceipts([]);
+        return;
+      }
+
       const storedReceipts = localStorage.getItem(`autoloot_receipts_${activeWallet}`);
       if (storedReceipts) {
         const parsed = JSON.parse(storedReceipts);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setReceipts(parsed);
+        if (Array.isArray(parsed)) {
+          // STRICT REQUIREMENT: Only verified on-chain settlements
+          const verified = parsed.filter(
+            (r: SwapReceipt) =>
+              r.isOnChain &&
+              r.txSignature &&
+              typeof r.txSignature === 'string' &&
+              !r.txSignature.startsWith('mock_') &&
+              r.txSignature.length >= 32
+          );
+          setReceipts(verified);
+          // Cleanly persist only verified receipts
+          localStorage.setItem(`autoloot_receipts_${activeWallet}`, JSON.stringify(verified));
         }
+      } else {
+        setReceipts([]);
       }
+
       const storedInv = localStorage.getItem(`autoloot_inventory_${activeWallet}`);
       if (storedInv) {
         const parsedInv = JSON.parse(storedInv);
@@ -66,7 +96,7 @@ export default function Home() {
     } catch (err) {
       console.warn('Failed to hydrate local state from localStorage:', err);
     }
-  }, [activeWallet]);
+  }, [activeWallet, isWalletConnected]);
 
   // Agent Loop & Strategy State
   const [currentStrategy, setCurrentStrategy] = useState(
@@ -152,6 +182,9 @@ export default function Home() {
 
   // Fetch player inventory & receipts
   const fetchInventory = useCallback(async () => {
+    if (!isWalletConnected || !activeWallet) {
+      return;
+    }
     try {
       const res = await fetch(`/api/agent?walletAddress=${encodeURIComponent(activeWallet)}`);
       const json = await res.json();
@@ -166,23 +199,31 @@ export default function Home() {
           } catch {}
         }
         if (json.data.recentSwaps && Array.isArray(json.data.recentSwaps)) {
+          // STRICT REQUIREMENT: Only on-chain verified settlements
+          const verifiedServer = json.data.recentSwaps.filter(
+            (r: SwapReceipt) =>
+              r.isOnChain &&
+              r.txSignature &&
+              typeof r.txSignature === 'string' &&
+              !r.txSignature.startsWith('mock_') &&
+              r.txSignature.length >= 32
+          );
+
           setReceipts((prev) => {
             const map = new Map<string, SwapReceipt>();
-            // Add server receipts
-            json.data.recentSwaps.forEach((r: SwapReceipt) => {
-              const key = r.id || r.txSignature;
-              if (key) map.set(key, r);
+            // Add verified server receipts
+            verifiedServer.forEach((r: SwapReceipt) => {
+              if (r.txSignature) map.set(r.txSignature, r);
             });
-            // Merge client receipts (never drop trades seen on client)
+            // Merge client receipts (only verified on-chain)
             prev.forEach((r) => {
-              const key = r.id || r.txSignature;
-              if (key && !map.has(key)) {
-                map.set(key, r);
-              } else if (key && map.has(key)) {
-                const existing = map.get(key)!;
-                if (r.isOnChain && !existing.isOnChain) {
-                  map.set(key, { ...existing, ...r });
-                }
+              if (
+                r.isOnChain &&
+                r.txSignature &&
+                !r.txSignature.startsWith('mock_') &&
+                !map.has(r.txSignature)
+              ) {
+                map.set(r.txSignature, r);
               }
             });
             const merged = Array.from(map.values()).sort(
@@ -201,7 +242,7 @@ export default function Home() {
     } catch (err: any) {
       console.error('Inventory fetch error:', err);
     }
-  }, [activeWallet]);
+  }, [activeWallet, isWalletConnected]);
 
   // Initial client mount & polling interval
   useEffect(() => {
@@ -212,7 +253,7 @@ export default function Home() {
         id: 'init-1',
         timestamp: new Date().toLocaleTimeString(),
         type: 'INFO',
-        message: 'AutoLoot trader online. Select a preset or type a strategy to begin.',
+        message: 'AutoLoot terminal online. Connect Solana wallet to initialize on-chain execution.',
       },
     ]);
 
@@ -226,22 +267,25 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fetchMarket, fetchInventory]);
 
-  // Halt monitoring if wallet disconnects while active
+  // Halt monitoring and clear active wallet state if wallet disconnects
   useEffect(() => {
-    if (!connected && isMonitoring) {
-      setIsMonitoring(false);
-      addLog('WARNING', '[MONITORING HALTED] Wallet disconnected. Autonomous protocol suspended.');
-      toast.warning('Wallet disconnected. Autonomous trading suspended.');
+    if (!isWalletConnected) {
+      if (isMonitoring) {
+        setIsMonitoring(false);
+        addLog('WARNING', '[MONITORING HALTED] Wallet disconnected. Autonomous protocol suspended.');
+        toast.warning('Wallet disconnected. Autonomous trading suspended.');
+      }
+      setReceipts([]);
     }
-  }, [connected, isMonitoring, addLog]);
+  }, [isWalletConnected, isMonitoring, addLog]);
 
   // Strategy Execution Handler (Automated On-Chain Settlement)
   const handleExecuteStrategy = useCallback(
     async (strategyToRun: string, singleShot = true) => {
       // 0. Pre-execution Check: Wallet Connection Gate
-      if (!connected) {
+      if (!isWalletConnected || !activeWallet) {
         toast.error('Connect your Solana wallet above to dispatch trading strategies.');
-        addLog('WARNING', '[DISPATCH BLOCKED] Wallet connection required to dispatch trading strategies.');
+        addLog('WARNING', '[DISPATCH BLOCKED] Wallet connection required to dispatch trading strategies. Off-chain simulation disabled.');
         return;
       }
 
@@ -292,23 +336,34 @@ export default function Home() {
           }
 
           if (executed && swapResult) {
-            const isRealOnChain = Boolean(swapResult.isOnChain && swapResult.txSignature);
-            const sig = swapResult.txSignature || '';
-            const sigShort = sig ? `${sig.slice(0, 8)}...` : 'Confirmed';
+            const isRealOnChain = Boolean(
+              swapResult.isOnChain &&
+              swapResult.txSignature &&
+              typeof swapResult.txSignature === 'string' &&
+              !swapResult.txSignature.startsWith('mock_') &&
+              swapResult.txSignature.length >= 32
+            );
 
-            if (isRealOnChain) {
+            if (!isRealOnChain) {
+              // STRICT REQUIREMENT: ZERO OFF-CHAIN SIMULATION.
               addLog(
-                'SUCCESS',
-                `[SETTLEMENT CONFIRMED] Trade settled on Solana DevNet! Hash: ${sigShort} // Slot #${swapResult.slot}`
+                'ERROR',
+                `[SETTLEMENT REJECTED] On-chain Solana DevNet confirmation failed: ${
+                  swapResult.broadcastError || 'DevNet unconfirmed'
+                }. Zero off-chain simulation allowed. No simulated trade recorded.`
               );
-              toast.success(`Trade settled on Solana DevNet (${sigShort})`);
-            } else {
-              addLog(
-                'INFO',
-                `[SETTLEMENT EXECUTED] Trade settled in autonomous engine (Off-chain simulated).`
-              );
-              toast.info(`Trade executed in autonomous engine (Off-chain)`);
+              toast.error('Solana DevNet settlement unconfirmed. Off-chain simulation disabled.');
+              return;
             }
+
+            const sig = swapResult.txSignature;
+            const sigShort = `${sig.slice(0, 8)}...${sig.slice(-6)}`;
+
+            addLog(
+              'SUCCESS',
+              `[SETTLEMENT CONFIRMED] Trade settled on Solana DevNet! Hash: ${sigShort} // Slot #${swapResult.slot}`
+            );
+            toast.success(`Trade settled on Solana DevNet (${sigShort})`);
 
             const newReceipt: SwapReceipt = {
               id: swapResult.receiptId || `tx-${Date.now()}`,
@@ -319,11 +374,11 @@ export default function Home() {
               amountIn: swapResult.amountIn || 0,
               amountOut: swapResult.amountOut || 0,
               rate: swapResult.effectiveRate || 0,
-              txSignature: swapResult.txSignature || '',
+              txSignature: sig,
               slot: swapResult.slot || 0,
               status: 'CONFIRMED',
-              isOnChain: swapResult.isOnChain,
-              broadcastError: swapResult.broadcastError,
+              isOnChain: true,
+              broadcastError: null,
               reason: swapResult.reason,
             };
 
@@ -331,7 +386,7 @@ export default function Home() {
               const merged = [
                 newReceipt,
                 ...prev.filter(
-                  (r) => r.id !== newReceipt.id && r.txSignature !== newReceipt.txSignature
+                  (r) => r.txSignature !== newReceipt.txSignature
                 ),
               ];
               try {
@@ -368,7 +423,7 @@ export default function Home() {
         setIsEvaluating(false);
       }
     },
-    [activeWallet, addLog, fetchInventory, fetchMarket, failsafeConfig, sessionAnalytics.pnlPercentage]
+    [activeWallet, isWalletConnected, addLog, fetchInventory, fetchMarket, failsafeConfig, inventory, sessionAnalytics.pnlPercentage]
   );
 
   // Autonomous Monitoring Loop
@@ -376,22 +431,28 @@ export default function Home() {
   isMonitoringRef.current = isMonitoring;
   const currentStrategyRef = useRef(currentStrategy);
   currentStrategyRef.current = currentStrategy;
+  const handleExecuteStrategyRef = useRef(handleExecuteStrategy);
+  handleExecuteStrategyRef.current = handleExecuteStrategy;
 
   useEffect(() => {
     if (!isMonitoring) return;
 
-    addLog('INFO', `[AUTONOMOUS PROTOCOL STARTED] Actively monitoring market ticks for: "${currentStrategy}"`);
+    const activeStrat = currentStrategyRef.current;
+    addLog('INFO', `[AUTONOMOUS PROTOCOL STARTED] Actively monitoring market ticks for: "${activeStrat}"`);
+
+    // Immediate tick 0 evaluation so trade triggers right away if target satisfied
+    handleExecuteStrategyRef.current(activeStrat, false);
 
     const loop = setInterval(() => {
       if (isMonitoringRef.current) {
-        handleExecuteStrategy(currentStrategyRef.current, false);
+        handleExecuteStrategyRef.current(currentStrategyRef.current, false);
       }
-    }, 5000);
+    }, 4000);
 
     return () => {
       clearInterval(loop);
     };
-  }, [isMonitoring, handleExecuteStrategy, addLog, currentStrategy]);
+  }, [isMonitoring, addLog]);
 
   // Market Shock Trigger Handler
   const handleTriggerShock = async (asset: AssetSymbol, direction: 'UP' | 'DOWN') => {
@@ -424,6 +485,10 @@ export default function Home() {
 
   // Reset Inventory Faucet Handler
   const handleResetInventory = async () => {
+    if (!isWalletConnected || !activeWallet) {
+      toast.error('Connect your Solana wallet to replenish inventory.');
+      return;
+    }
     setIsResettingInventory(true);
     try {
       const res = await fetch(`/api/agent?walletAddress=${encodeURIComponent(activeWallet)}&reset=true`);
@@ -449,7 +514,7 @@ export default function Home() {
 
   // Direct Purchase with SOL Handler (Depot interaction)
   const handleBuyWithSol = async (asset: AssetSymbol, amount: number, solCost: number) => {
-    if (!connected) {
+    if (!isWalletConnected) {
       toast.error('Connect your wallet above to purchase resources with DevNet SOL.');
       return;
     }
@@ -573,7 +638,7 @@ export default function Home() {
               hasUpdatedRecently={hasUpdatedRecently}
               onBuyWithSol={handleBuyWithSol}
               isBuying={isBuyingSol}
-              isWalletConnected={!!connected}
+              isWalletConnected={isWalletConnected}
             />
           )}
         </div>
@@ -585,13 +650,18 @@ export default function Home() {
           <AgentControlCenter
             onSubmitStrategy={(strategy) => handleExecuteStrategy(strategy, true)}
             isEvaluating={isEvaluating}
-            isMonitoring={isMonitoring}
-            isConnected={Boolean(connected)}
-            onToggleMonitoring={() => {
-              if (!connected) {
+            isMonitoring={isWalletConnected ? isMonitoring : false}
+            isConnected={isWalletConnected}
+            onToggleMonitoring={(strategyFromInput) => {
+              if (!isWalletConnected) {
                 toast.error('Connect your Solana wallet above to enable autonomous agent monitoring.');
                 addLog('WARNING', '[MONITORING BLOCKED] Wallet connection required to activate autonomous protocol.');
                 return;
+              }
+              if (strategyFromInput && typeof strategyFromInput === 'string' && strategyFromInput.trim()) {
+                const trimmed = strategyFromInput.trim();
+                setCurrentStrategy(trimmed);
+                currentStrategyRef.current = trimmed;
               }
               setIsMonitoring((prev) => !prev);
             }}
