@@ -46,6 +46,7 @@ export function TradeHistory({ receipts }: TradeHistoryProps) {
             <tbody className="divide-y divide-zinc-900/60">
               {receipts.map((tx) => {
                 const timeString = new Date(tx.timestamp).toLocaleTimeString();
+                const isRealOnChain = Boolean(tx.isOnChain && tx.txSignature);
                 const truncatedSig = tx.txSignature
                   ? `${tx.txSignature.slice(0, 8)}...${tx.txSignature.slice(-6)}`
                   : 'Pending';
@@ -54,11 +55,13 @@ export function TradeHistory({ receipts }: TradeHistoryProps) {
                   <tr key={tx.id} className="hover:bg-zinc-900/40 transition-colors">
                     <td className="py-2.5 text-zinc-400">
                       <div>{timeString}</div>
-                      <div className="text-[10px] text-zinc-600">SLOT #{tx.slot}</div>
+                      <div className="text-[10px] text-zinc-600">
+                        {isRealOnChain ? `SLOT #${tx.slot}` : `SIMULATED // TICK #${tx.slot ? tx.slot % 1000 : 0}`}
+                      </div>
                     </td>
                     <td className="py-2.5 font-bold">
                       <div className="flex items-center gap-1.5">
-                        <CheckCircle2 className="size-3 text-emerald-400 shrink-0" />
+                        <CheckCircle2 className={`size-3 shrink-0 ${isRealOnChain ? 'text-emerald-400' : 'text-amber-400'}`} />
                         <span className="text-rose-300">-{tx.amountIn} ${tx.fromAsset}</span>
                         <span className="text-zinc-500">&rarr;</span>
                         <span className="text-emerald-400">+{tx.amountOut} ${tx.toAsset}</span>
@@ -68,25 +71,40 @@ export function TradeHistory({ receipts }: TradeHistoryProps) {
                       1 ${tx.fromAsset} = {tx.rate} ${tx.toAsset}
                     </td>
                     <td className="py-2.5">
-                      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold">
-                        <ShieldCheck className="size-2.5" />
-                        CONFIRMED ON DEVNET
-                      </span>
+                      {isRealOnChain ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold">
+                          <ShieldCheck className="size-2.5" />
+                          CONFIRMED ON DEVNET
+                        </span>
+                      ) : (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 font-bold cursor-help"
+                          title={tx.broadcastError || 'Settlement processed in autonomous engine; off-chain simulated.'}
+                        >
+                          <CheckCircle2 className="size-2.5" />
+                          SIMULATED (OFF-CHAIN)
+                        </span>
+                      )}
                     </td>
                     <td className="py-2.5 text-right">
-                      {tx.txSignature ? (
+                      {isRealOnChain ? (
                         <a
                           href={`https://explorer.solana.com/tx/${tx.txSignature}?cluster=devnet`}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 hover:underline transition-colors text-[11px] font-bold"
-                          title="View on Solana Explorer"
+                          title="View verified on-chain transaction on Solana Explorer (DevNet)"
                         >
                           <span>{truncatedSig}</span>
                           <ExternalLink className="size-3" />
                         </a>
                       ) : (
-                        <span className="text-[11px] text-zinc-600">CONFIRMING...</span>
+                        <span
+                          className="text-[11px] text-zinc-500 italic cursor-help"
+                          title={tx.broadcastError || 'Settlement executed off-chain'}
+                        >
+                          OFF-CHAIN
+                        </span>
                       )}
                     </td>
                   </tr>

@@ -45,6 +45,29 @@ export default function Home() {
   const [hasUpdatedRecently, setHasUpdatedRecently] = useState(false);
   const [isBuyingSol, setIsBuyingSol] = useState(false);
 
+  // Load client-persisted receipts and inventory from localStorage on activeWallet change
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const storedReceipts = localStorage.getItem(`autoloot_receipts_${activeWallet}`);
+      if (storedReceipts) {
+        const parsed = JSON.parse(storedReceipts);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setReceipts(parsed);
+        }
+      }
+      const storedInv = localStorage.getItem(`autoloot_inventory_${activeWallet}`);
+      if (storedInv) {
+        const parsedInv = JSON.parse(storedInv);
+        if (parsedInv && typeof parsedInv.WOOD === 'number') {
+          setInventory(parsedInv);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to hydrate local state from localStorage:', err);
+    }
+  }, [activeWallet]);
+
   // Agent Loop & Strategy State
   const [currentStrategy, setCurrentStrategy] = useState(
     'Trade 30 Iron for Gold if Gold drops below 10.0 Iron'
@@ -133,9 +156,46 @@ export default function Home() {
       const res = await fetch(`/api/agent?walletAddress=${encodeURIComponent(activeWallet)}`);
       const json = await res.json();
       if (json.success && json.data) {
-        setInventory(json.data.inventory);
-        if (json.data.recentSwaps) {
-          setReceipts(json.data.recentSwaps);
+        if (json.data.inventory) {
+          setInventory(json.data.inventory);
+          try {
+            localStorage.setItem(
+              `autoloot_inventory_${activeWallet}`,
+              JSON.stringify(json.data.inventory)
+            );
+          } catch {}
+        }
+        if (json.data.recentSwaps && Array.isArray(json.data.recentSwaps)) {
+          setReceipts((prev) => {
+            const map = new Map<string, SwapReceipt>();
+            // Add server receipts
+            json.data.recentSwaps.forEach((r: SwapReceipt) => {
+              const key = r.id || r.txSignature;
+              if (key) map.set(key, r);
+            });
+            // Merge client receipts (never drop trades seen on client)
+            prev.forEach((r) => {
+              const key = r.id || r.txSignature;
+              if (key && !map.has(key)) {
+                map.set(key, r);
+              } else if (key && map.has(key)) {
+                const existing = map.get(key)!;
+                if (r.isOnChain && !existing.isOnChain) {
+                  map.set(key, { ...existing, ...r });
+                }
+              }
+            });
+            const merged = Array.from(map.values()).sort(
+              (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            );
+            try {
+              localStorage.setItem(
+                `autoloot_receipts_${activeWallet}`,
+                JSON.stringify(merged.slice(0, 50))
+              );
+            } catch {}
+            return merged;
+          });
         }
       }
     } catch (err: any) {
@@ -166,9 +226,25 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fetchMarket, fetchInventory]);
 
+  // Halt monitoring if wallet disconnects while active
+  useEffect(() => {
+    if (!connected && isMonitoring) {
+      setIsMonitoring(false);
+      addLog('WARNING', '[MONITORING HALTED] Wallet disconnected. Autonomous protocol suspended.');
+      toast.warning('Wallet disconnected. Autonomous trading suspended.');
+    }
+  }, [connected, isMonitoring, addLog]);
+
   // Strategy Execution Handler (Automated On-Chain Settlement)
   const handleExecuteStrategy = useCallback(
     async (strategyToRun: string, singleShot = true) => {
+      // 0. Pre-execution Check: Wallet Connection Gate
+      if (!connected) {
+        toast.error('Connect your Solana wallet above to dispatch trading strategies.');
+        addLog('WARNING', '[DISPATCH BLOCKED] Wallet connection required to dispatch trading strategies.');
+        return;
+      }
+
       // 1. Pre-execution Failsafe Check: Stop-Loss
       if (failsafeConfig.stopLossEnabled) {
         const failsafe = evaluateFailsafeLimits({
@@ -198,6 +274,7 @@ export default function Home() {
             walletAddress: activeWallet,
             evolveMarket: true,
             failsafeConfig,
+            clientInventory: inventory,
           }),
         });
 
@@ -215,14 +292,56 @@ export default function Home() {
           }
 
           if (executed && swapResult) {
+            const isRealOnChain = Boolean(swapResult.isOnChain && swapResult.txSignature);
             const sig = swapResult.txSignature || '';
             const sigShort = sig ? `${sig.slice(0, 8)}...` : 'Confirmed';
 
-            addLog(
-              'SUCCESS',
-              `[SETTLEMENT CONFIRMED] Trade settled on Solana DevNet! Hash: ${sigShort} // Slot #${swapResult.slot}`
-            );
-            toast.success(`Trade settled on Solana DevNet (${sigShort})`);
+            if (isRealOnChain) {
+              addLog(
+                'SUCCESS',
+                `[SETTLEMENT CONFIRMED] Trade settled on Solana DevNet! Hash: ${sigShort} // Slot #${swapResult.slot}`
+              );
+              toast.success(`Trade settled on Solana DevNet (${sigShort})`);
+            } else {
+              addLog(
+                'INFO',
+                `[SETTLEMENT EXECUTED] Trade settled in autonomous engine (Off-chain simulated).`
+              );
+              toast.info(`Trade executed in autonomous engine (Off-chain)`);
+            }
+
+            const newReceipt: SwapReceipt = {
+              id: swapResult.receiptId || `tx-${Date.now()}`,
+              timestamp: new Date().toISOString(),
+              walletAddress: activeWallet,
+              fromAsset: swapResult.fromAsset || 'WOOD',
+              toAsset: swapResult.toAsset || 'IRON',
+              amountIn: swapResult.amountIn || 0,
+              amountOut: swapResult.amountOut || 0,
+              rate: swapResult.effectiveRate || 0,
+              txSignature: swapResult.txSignature || '',
+              slot: swapResult.slot || 0,
+              status: 'CONFIRMED',
+              isOnChain: swapResult.isOnChain,
+              broadcastError: swapResult.broadcastError,
+              reason: swapResult.reason,
+            };
+
+            setReceipts((prev) => {
+              const merged = [
+                newReceipt,
+                ...prev.filter(
+                  (r) => r.id !== newReceipt.id && r.txSignature !== newReceipt.txSignature
+                ),
+              ];
+              try {
+                localStorage.setItem(
+                  `autoloot_receipts_${activeWallet}`,
+                  JSON.stringify(merged.slice(0, 50))
+                );
+              } catch {}
+              return merged;
+            });
 
             setHasUpdatedRecently(true);
             setTimeout(() => setHasUpdatedRecently(false), 2500);
@@ -230,6 +349,12 @@ export default function Home() {
 
           if (updatedInv) {
             setInventory(updatedInv);
+            try {
+              localStorage.setItem(
+                `autoloot_inventory_${activeWallet}`,
+                JSON.stringify(updatedInv)
+              );
+            } catch {}
           }
 
           // Refresh receipts directly from the verified ledger
@@ -305,6 +430,9 @@ export default function Home() {
       const json = await res.json();
       if (json.success && json.inventory) {
         setInventory(json.inventory);
+        try {
+          localStorage.removeItem(`autoloot_inventory_${activeWallet}`);
+        } catch {}
         if (market) {
           const resetVal = calculateInventoryValuation(json.inventory, market);
           setBaselineValuation(resetVal);
@@ -361,6 +489,26 @@ export default function Home() {
         const json = await res.json();
         if (json.success && json.data) {
           setInventory(json.data.inventory);
+          try {
+            localStorage.setItem(
+              `autoloot_inventory_${activeWallet}`,
+              JSON.stringify(json.data.inventory)
+            );
+          } catch {}
+
+          if (json.data.receipt) {
+            setReceipts((prev) => {
+              const merged = [json.data.receipt, ...prev.filter((r) => r.id !== json.data.receipt.id)];
+              try {
+                localStorage.setItem(
+                  `autoloot_receipts_${activeWallet}`,
+                  JSON.stringify(merged.slice(0, 50))
+                );
+              } catch {}
+              return merged;
+            });
+          }
+
           if (market) {
             const purchasedValue = amount * (market.assets[asset]?.price || 0);
             setBaselineValuation((prev) => prev + purchasedValue);
@@ -438,7 +586,15 @@ export default function Home() {
             onSubmitStrategy={(strategy) => handleExecuteStrategy(strategy, true)}
             isEvaluating={isEvaluating}
             isMonitoring={isMonitoring}
-            onToggleMonitoring={() => setIsMonitoring((prev) => !prev)}
+            isConnected={Boolean(connected)}
+            onToggleMonitoring={() => {
+              if (!connected) {
+                toast.error('Connect your Solana wallet above to enable autonomous agent monitoring.');
+                addLog('WARNING', '[MONITORING BLOCKED] Wallet connection required to activate autonomous protocol.');
+                return;
+              }
+              setIsMonitoring((prev) => !prev);
+            }}
             onEmergencyHalt={handleEmergencyHalt}
             currentStrategy={currentStrategy}
             failsafeConfig={failsafeConfig}

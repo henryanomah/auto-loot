@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runAgentStrategy } from '@/lib/mastra-agent';
-import { getPlayerInventory, getRecentSwapReceipts, resetPlayerInventory, purchaseAssetWithSol, updateReceiptOnChain } from '@/lib/player-inventory';
+import {
+  getPlayerInventory,
+  syncPlayerInventory,
+  getRecentSwapReceipts,
+  resetPlayerInventory,
+  purchaseAssetWithSol,
+  updateReceiptOnChain,
+} from '@/lib/player-inventory';
 import { getCurrentMarketPrices, evolveMarketPrices, AssetSymbol } from '@/lib/market-engine';
 import { broadcastOnChainSettlement } from '@/lib/solana-settlement';
 
@@ -75,12 +82,20 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const { strategy, walletAddress, groqApiKey, evolveMarket, failsafeConfig } = body as {
+    const {
+      strategy,
+      walletAddress,
+      groqApiKey,
+      evolveMarket,
+      failsafeConfig,
+      clientInventory,
+    } = body as {
       strategy?: string;
       walletAddress?: string;
       groqApiKey?: string;
       evolveMarket?: boolean;
       failsafeConfig?: any;
+      clientInventory?: any;
     };
 
     if (!strategy || typeof strategy !== 'string') {
@@ -94,6 +109,11 @@ export async function POST(request: NextRequest) {
     }
 
     const activeWallet = walletAddress || 'demo-session-wallet';
+
+    // Synchronize client-provided inventory across serverless lambdas
+    if (clientInventory && typeof clientInventory === 'object') {
+      syncPlayerInventory(activeWallet, clientInventory);
+    }
 
     // Optionally advance market price tick before evaluating
     const market = evolveMarket ? evolveMarketPrices() : getCurrentMarketPrices();
@@ -114,15 +134,24 @@ export async function POST(request: NextRequest) {
           memo: `AutoLoot Settlement: ${summary}`,
           playerWalletAddress: activeWallet,
         });
-        if (onChain.signature) {
+
+        if (onChain.isConfirmed && onChain.signature) {
           evaluation.swapResult.txSignature = onChain.signature;
           evaluation.swapResult.slot = onChain.slot;
           evaluation.swapResult.isOnChain = true;
+          evaluation.swapResult.explorerUrl = `https://explorer.solana.com/tx/${onChain.signature}?cluster=devnet`;
           if (evaluation.swapResult.receiptId) {
             updateReceiptOnChain(evaluation.swapResult.receiptId, onChain.signature, onChain.slot);
           }
+        } else {
+          // Off-chain simulated fallback
+          evaluation.swapResult.isOnChain = false;
+          evaluation.swapResult.broadcastError =
+            onChain.broadcastError || 'Settlement executed off-chain; DevNet unconfirmed';
         }
-      } catch (err) {
+      } catch (err: any) {
+        evaluation.swapResult.isOnChain = false;
+        evaluation.swapResult.broadcastError = err?.message || 'On-chain broadcast exception';
         console.warn('On-chain settlement broadcast note:', err);
       }
     }

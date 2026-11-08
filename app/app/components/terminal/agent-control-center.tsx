@@ -9,6 +9,7 @@ import {
   Sparkles,
   AlertOctagon,
   ShieldAlert,
+  Lock,
 } from 'lucide-react';
 import { FailsafeConfig } from '@/lib/failsafe-engine';
 
@@ -16,6 +17,7 @@ interface AgentControlCenterProps {
   onSubmitStrategy: (strategy: string, singleShot?: boolean) => Promise<void>;
   isEvaluating: boolean;
   isMonitoring: boolean;
+  isConnected?: boolean;
   onToggleMonitoring: () => void;
   onEmergencyHalt: () => void;
   currentStrategy: string;
@@ -27,6 +29,7 @@ export function AgentControlCenter({
   onSubmitStrategy,
   isEvaluating,
   isMonitoring,
+  isConnected = false,
   onToggleMonitoring,
   onEmergencyHalt,
   currentStrategy,
@@ -54,6 +57,7 @@ export function AgentControlCenter({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isConnected) return;
     if (!strategyInput.trim() || isEvaluating) return;
     onSubmitStrategy(strategyInput, !isMonitoring);
   };
@@ -86,10 +90,20 @@ export function AgentControlCenter({
           {/* Autonomous Monitoring Loop Toggle */}
           <button
             onClick={onToggleMonitoring}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
-              isMonitoring
-                ? 'bg-emerald-500/20 border border-emerald-500/60 text-emerald-300 shadow-[0_0_15px_-3px_rgba(16,185,129,0.5)]'
-                : 'bg-zinc-900 border border-zinc-700 text-zinc-400 hover:text-zinc-200'
+            disabled={!isConnected}
+            title={
+              !isConnected
+                ? 'Connect your Solana wallet to start autonomous monitoring'
+                : isMonitoring
+                ? 'Pause autonomous protocol'
+                : 'Start autonomous protocol loop'
+            }
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-all ${
+              !isConnected
+                ? 'bg-zinc-900/50 border border-zinc-800 text-zinc-600 cursor-not-allowed opacity-60'
+                : isMonitoring
+                ? 'bg-emerald-500/20 border border-emerald-500/60 text-emerald-300 shadow-[0_0_15px_-3px_rgba(16,185,129,0.5)] cursor-pointer'
+                : 'bg-zinc-900 border border-zinc-700 text-zinc-400 hover:text-zinc-200 cursor-pointer'
             }`}
           >
             {isMonitoring ? (
@@ -99,7 +113,7 @@ export function AgentControlCenter({
               </>
             ) : (
               <>
-                <Play className="size-3 text-zinc-400" />
+                <Play className={`size-3 ${isConnected ? 'text-zinc-400' : 'text-zinc-600'}`} />
                 <span>START AUTOLOOT</span>
               </>
             )}
@@ -226,24 +240,58 @@ export function AgentControlCenter({
 
       {/* Terminal Form Input */}
       <form onSubmit={handleSubmit} className="mt-4">
-        <div className="relative flex items-center bg-black/60 border border-cyan-500/40 p-2 shadow-inner focus-within:border-cyan-400 transition-colors">
-          <span className="text-cyan-400 text-xs px-2.5 py-1 mr-2 select-none font-bold shrink-0 whitespace-nowrap bg-cyan-950/40 border-r border-cyan-500/30 font-mono">
+        <div className={`relative flex items-center bg-black/60 border p-2 shadow-inner transition-colors ${
+          !isConnected
+            ? 'border-zinc-800/80 opacity-80'
+            : 'border-cyan-500/40 focus-within:border-cyan-400'
+        }`}>
+          <span className={`text-xs px-2.5 py-1 mr-2 select-none font-bold shrink-0 whitespace-nowrap border-r font-mono ${
+            !isConnected
+              ? 'text-zinc-600 bg-zinc-950/40 border-zinc-800'
+              : 'text-cyan-400 bg-cyan-950/40 border-cyan-500/30'
+          }`}>
             STRATEGY &gt;
           </span>
           <input
             type="text"
             value={strategyInput}
             onChange={(e) => setStrategyInput(e.target.value)}
-            placeholder="Type economic directive (e.g. 'Trade Iron for Gold if Gold < 10 Iron')..."
-            className="w-full bg-transparent border-none outline-none font-mono text-sm text-cyan-100 placeholder:text-zinc-600 focus:ring-0"
+            disabled={!isConnected}
+            placeholder={
+              isConnected
+                ? "Type economic directive (e.g. 'Trade Iron for Gold if Gold < 10 Iron')..."
+                : "Connect your Solana wallet above to dispatch directives..."
+            }
+            className={`w-full bg-transparent border-none outline-none font-mono text-sm focus:ring-0 ${
+              !isConnected ? 'text-zinc-600 cursor-not-allowed' : 'text-cyan-100 placeholder:text-zinc-600'
+            }`}
           />
           <button
             type="submit"
-            disabled={isEvaluating || !strategyInput.trim()}
-            className="flex items-center gap-1.5 px-4 py-1.5 ml-2 text-xs font-bold bg-cyan-500 text-black hover:bg-cyan-400 disabled:opacity-50 transition-all shadow-[0_0_12px_rgba(0,243,255,0.4)] cursor-pointer"
+            disabled={!isConnected || isEvaluating || !strategyInput.trim()}
+            className={`flex items-center gap-1.5 px-4 py-1.5 ml-2 text-xs font-bold transition-all ${
+              !isConnected
+                ? 'bg-zinc-800/80 border border-zinc-700 text-zinc-500 cursor-not-allowed'
+                : 'bg-cyan-500 text-black hover:bg-cyan-400 disabled:opacity-50 shadow-[0_0_12px_rgba(0,243,255,0.4)] cursor-pointer'
+            }`}
+            title={!isConnected ? 'Connect your wallet to dispatch' : undefined}
           >
-            <Send className="size-3" />
-            {isEvaluating ? 'EVALUATING...' : 'DISPATCH'}
+            {!isConnected ? (
+              <>
+                <Lock className="size-3 text-zinc-500" />
+                <span className="whitespace-nowrap">CONNECT WALLET</span>
+              </>
+            ) : isEvaluating ? (
+              <>
+                <Send className="size-3" />
+                <span className="whitespace-nowrap">EVALUATING...</span>
+              </>
+            ) : (
+              <>
+                <Send className="size-3" />
+                <span className="whitespace-nowrap">DISPATCH</span>
+              </>
+            )}
           </button>
         </div>
       </form>

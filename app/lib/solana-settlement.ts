@@ -1,5 +1,7 @@
 import {
   createKeyPairSignerFromBytes,
+  createKeyPairSignerFromPrivateKeyBytes,
+  generateKeyPairSigner,
   createTransactionMessage,
   setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
@@ -41,18 +43,38 @@ function decodeBase58(str: string): Uint8Array {
 export async function getProtocolSigner(): Promise<KeyPairSigner> {
   if (cachedSigner) return cachedSigner;
 
-  // 1. Check environment variable
+  // 1. Check environment variable SOLANA_PRIVATE_KEY
   if (process.env.SOLANA_PRIVATE_KEY) {
     try {
-      const raw = process.env.SOLANA_PRIVATE_KEY.trim();
-      let keyBytes: Uint8Array;
+      let raw = process.env.SOLANA_PRIVATE_KEY.trim();
+      // Strip outer double or single quotes if copied from dashboard
+      if (
+        (raw.startsWith('"') && raw.endsWith('"')) ||
+        (raw.startsWith("'") && raw.endsWith("'"))
+      ) {
+        raw = raw.slice(1, -1).trim();
+      }
+
+      let keyBytes: Uint8Array | null = null;
       if (raw.startsWith('[') && raw.endsWith(']')) {
         keyBytes = new Uint8Array(JSON.parse(raw));
       } else {
-        keyBytes = decodeBase58(raw);
+        try {
+          keyBytes = decodeBase58(raw);
+        } catch {
+          keyBytes = new Uint8Array(Buffer.from(raw, 'base64'));
+        }
       }
-      cachedSigner = await createKeyPairSignerFromBytes(keyBytes);
-      return cachedSigner;
+
+      if (keyBytes) {
+        if (keyBytes.length === 64) {
+          cachedSigner = await createKeyPairSignerFromBytes(keyBytes);
+          return cachedSigner;
+        } else if (keyBytes.length === 32) {
+          cachedSigner = await createKeyPairSignerFromPrivateKeyBytes(keyBytes);
+          return cachedSigner;
+        }
+      }
     } catch (e) {
       console.warn('Failed to parse SOLANA_PRIVATE_KEY env var:', e);
     }
@@ -65,20 +87,22 @@ export async function getProtocolSigner(): Promise<KeyPairSigner> {
     try {
       const fileContent = fs.readFileSync(candidatePath, 'utf8');
       const bytes = new Uint8Array(JSON.parse(fileContent));
-      cachedSigner = await createKeyPairSignerFromBytes(bytes);
-      return cachedSigner;
+      if (bytes.length === 64) {
+        cachedSigner = await createKeyPairSignerFromBytes(bytes);
+        return cachedSigner;
+      }
     } catch (e) {
       console.warn('Failed to load ~/.config/solana/id.json:', e);
     }
   }
 
-  // 3. Fallback: generate ephemeral keypair if no local key exists
-  const seedBytes = new Uint8Array(32);
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    crypto.getRandomValues(seedBytes);
-  }
-  cachedSigner = await createKeyPairSignerFromBytes(new Uint8Array(64));
+  // 3. Fallback: generate a valid ephemeral keypair
+  cachedSigner = await generateKeyPairSigner();
   return cachedSigner;
+}
+
+export function getDefaultDevNetRpcUrl(): string {
+  return process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
 }
 
 /**
@@ -88,7 +112,7 @@ export async function getProtocolSigner(): Promise<KeyPairSigner> {
 export async function broadcastOnChainSettlement({
   memo,
   playerWalletAddress,
-  rpcUrl = 'https://api.devnet.solana.com',
+  rpcUrl = getDefaultDevNetRpcUrl(),
 }: {
   memo: string;
   playerWalletAddress?: string;
@@ -98,16 +122,17 @@ export async function broadcastOnChainSettlement({
   slot: number;
   signerAddress: string;
   isSuccess: boolean;
-  isConfirmed?: boolean;
+  isConfirmed: boolean;
   broadcastError?: string | null;
 }> {
   try {
     const signer = await getProtocolSigner();
     const rpc = createSolanaRpc(rpcUrl);
 
-    // Fetch latest blockhash from Solana DevNet
-    let blockhashLifetime: { blockhash: Blockhash; lastValidBlockHeight: bigint };
+    // Fetch latest blockhash and slot from Solana DevNet
+    let blockhashLifetime: { blockhash: Blockhash; lastValidBlockHeight: bigint } | null = null;
     let currentSlot = 284000000;
+    let rpcErrorNote: string | null = null;
 
     try {
       const latestBlock = await rpc.getLatestBlockhash().send();
@@ -117,7 +142,9 @@ export async function broadcastOnChainSettlement({
       };
       const slotResult = await rpc.getSlot().send();
       currentSlot = Number(slotResult);
-    } catch {
+    } catch (bhErr: any) {
+      rpcErrorNote = bhErr?.message || String(bhErr);
+      // Fallback blockhash for offline unit testing/simulations
       blockhashLifetime = {
         blockhash: '4hsy53Fpv7U48cZ1gE1w4m5hXW8Y1QxQyX7Z8Z8Z8Z8Z' as Blockhash,
         lastValidBlockHeight: 300000000n,
@@ -154,8 +181,21 @@ export async function broadcastOnChainSettlement({
     const signature = sigBytes ? encodeBase58(sigBytes) : '';
     const wireTransaction = getBase64EncodedWireTransaction(signedTransaction);
 
+    // If blockhash lookup failed earlier, we cannot broadcast to DevNet
+    if (rpcErrorNote) {
+      return {
+        signature,
+        slot: currentSlot,
+        signerAddress: signer.address,
+        isSuccess: false,
+        isConfirmed: false,
+        broadcastError: `DevNet RPC blockhash unreachable: ${rpcErrorNote}`,
+      };
+    }
+
     let isConfirmed = false;
     let broadcastError: string | null = null;
+
     try {
       await rpc.sendTransaction(wireTransaction, { encoding: 'base64' }).send();
       isConfirmed = true;
@@ -165,10 +205,10 @@ export async function broadcastOnChainSettlement({
     }
 
     return {
-      signature,
+      signature: isConfirmed ? signature : signature,
       slot: currentSlot,
       signerAddress: signer.address,
-      isSuccess: true,
+      isSuccess: isConfirmed,
       isConfirmed,
       broadcastError,
     };
@@ -179,6 +219,8 @@ export async function broadcastOnChainSettlement({
       slot: 284000000,
       signerAddress: '',
       isSuccess: false,
+      isConfirmed: false,
+      broadcastError: err?.message || 'Settlement broadcast error',
     };
   }
 }

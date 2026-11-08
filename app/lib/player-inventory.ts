@@ -21,6 +21,7 @@ export interface SwapReceipt {
   status: 'CONFIRMED' | 'FAILED';
   reason?: string;
   isOnChain?: boolean;
+  broadcastError?: string | null;
 }
 
 // In-memory inventory store keyed by wallet public key
@@ -39,6 +40,21 @@ export function getPlayerInventory(walletAddress: string): InventoryBalance {
     playerInventories.set(walletAddress, { ...DEFAULT_STARTER_INVENTORY });
   }
   return { ...playerInventories.get(walletAddress)! };
+}
+
+export function syncPlayerInventory(
+  walletAddress: string,
+  inventory?: Partial<InventoryBalance>
+): InventoryBalance {
+  if (!inventory) return getPlayerInventory(walletAddress);
+  const current = getPlayerInventory(walletAddress);
+  const updated: InventoryBalance = {
+    WOOD: typeof inventory.WOOD === 'number' ? Math.max(0, inventory.WOOD) : current.WOOD,
+    IRON: typeof inventory.IRON === 'number' ? Math.max(0, inventory.IRON) : current.IRON,
+    GOLD: typeof inventory.GOLD === 'number' ? Math.max(0, inventory.GOLD) : current.GOLD,
+  };
+  playerInventories.set(walletAddress, updated);
+  return { ...updated };
 }
 
 export function updatePlayerInventory(

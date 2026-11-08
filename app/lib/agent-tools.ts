@@ -33,6 +33,7 @@ export interface SwapResult {
   explorerUrl?: string;
   reason?: string;
   error?: string;
+  broadcastError?: string | null;
 }
 
 /**
