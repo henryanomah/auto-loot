@@ -112,6 +112,7 @@ export async function POST(request: NextRequest) {
       try {
         const onChain = await broadcastOnChainSettlement({
           memo: `AutoLoot Settlement: ${summary}`,
+          playerWalletAddress: activeWallet,
         });
         if (onChain.signature) {
           evaluation.swapResult.txSignature = onChain.signature;

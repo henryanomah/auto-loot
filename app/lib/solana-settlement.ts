@@ -8,6 +8,8 @@ import {
   getBase64EncodedWireTransaction,
   pipe,
   createSolanaRpc,
+  address,
+  AccountRole,
   type KeyPairSigner,
   type Blockhash,
 } from '@solana/kit';
@@ -85,15 +87,19 @@ export async function getProtocolSigner(): Promise<KeyPairSigner> {
  */
 export async function broadcastOnChainSettlement({
   memo,
+  playerWalletAddress,
   rpcUrl = 'https://api.devnet.solana.com',
 }: {
   memo: string;
+  playerWalletAddress?: string;
   rpcUrl?: string;
 }): Promise<{
   signature: string;
   slot: number;
   signerAddress: string;
   isSuccess: boolean;
+  isConfirmed?: boolean;
+  broadcastError?: string | null;
 }> {
   try {
     const signer = await getProtocolSigner();
@@ -118,7 +124,23 @@ export async function broadcastOnChainSettlement({
       };
     }
 
-    const memoIx = getAddMemoInstruction({ memo });
+    const baseMemoIx = getAddMemoInstruction({ memo });
+    let memoIx: any = baseMemoIx;
+
+    // Link player's wallet address as a readonly account so the transaction
+    // is permanently indexed and visible under the player's wallet on Solana Explorer
+    if (playerWalletAddress && playerWalletAddress.length >= 32 && playerWalletAddress.length <= 44) {
+      try {
+        memoIx = {
+          ...baseMemoIx,
+          accounts: [
+            { address: address(playerWalletAddress), role: AccountRole.READONLY },
+          ],
+        };
+      } catch {
+        memoIx = baseMemoIx;
+      }
+    }
 
     const transactionMessage = pipe(
       createTransactionMessage({ version: 0 }),
@@ -132,10 +154,14 @@ export async function broadcastOnChainSettlement({
     const signature = sigBytes ? encodeBase58(sigBytes) : '';
     const wireTransaction = getBase64EncodedWireTransaction(signedTransaction);
 
+    let isConfirmed = false;
+    let broadcastError: string | null = null;
     try {
       await rpc.sendTransaction(wireTransaction, { encoding: 'base64' }).send();
+      isConfirmed = true;
     } catch (rpcErr: any) {
-      console.warn('DevNet broadcast RPC send note:', rpcErr?.message || rpcErr);
+      broadcastError = rpcErr?.message || String(rpcErr);
+      console.warn('DevNet broadcast RPC send note:', broadcastError);
     }
 
     return {
@@ -143,6 +169,8 @@ export async function broadcastOnChainSettlement({
       slot: currentSlot,
       signerAddress: signer.address,
       isSuccess: true,
+      isConfirmed,
+      broadcastError,
     };
   } catch (err: any) {
     console.error('Failed to broadcast on-chain settlement:', err);
